@@ -1,0 +1,20 @@
+services:
+  ansible:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        IMAGE: ${IMAGE}
+        RELEASE: ${RELEASE}
+        USER_NAME: ${USER_NAME}
+    container_name: ansible
+    hostname: ansible
+    working_dir: /home/${USER_NAME}/ansible
+    command: /bin/bash -lc "while sleep 1000; do :; done"
+    volumes:
+      - type: bind
+        source: ..
+        target: /home/${USER_NAME}/ansible
+      - type: bind
+        source: ./commandhistory
+        target: /home/${USER_NAME}/commandhistory

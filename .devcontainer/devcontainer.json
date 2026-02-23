@@ -1,0 +1,42 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
+{
+	"name": "ansible",
+	"dockerComposeFile": "compose.yaml",
+	"service": "ansible",
+	"postStartCommand": "sudo chown -R vscode:vscode ${containerWorkspaceFolder} && git config --global --add safe.directory ${containerWorkspaceFolder}",
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"files.eol": "\n",
+				"terminal.integrated.shellIntegration.enabled": false,
+				"terminal.integrated.defaultProfile.linux": "zsh",
+				"terminal.integrated.profiles.linux": {
+					"bash": {
+							"path": "bash",
+							"icon": "terminal-bash"
+					},
+					"zsh": {
+							"path": "zsh",
+							"args": []
+					}
+				}
+			},
+			"extensions": [
+				"github.copilot",
+				"github.copilot-chat",
+				"mhutchie.git-graph",
+				"redhat.vscode-yaml",
+				"redhat.vscode-kubernetes-tools",
+				"redhat.anaible",
+				"google.geminicodeassist"
+			]
+		}
+	},
+	"remoteUser": "vscode",
+	"containerUser": "vscode",
+	"updateRemoteUserUID": true,
+	"privileged": true,
+	"workspaceFolder": "/home/vscode/${SERVICE_NAME}",
+	"shutdownAction": "stopCompose"
+}

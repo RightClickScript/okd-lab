@@ -1,0 +1,9 @@
+---
+# playbook-2-semaphore-init.yml - Deploy Semaphore UI and HashiCorp Vault.
+# To be implemented by Coder.
+- name: Semaphore Init
+  hosts: localhost
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

@@ -1,0 +1,9 @@
+---
+# playbook-9-okd-workers.yml - OKD Bare-metal Workers (NUCs).
+# To be implemented by Coder.
+- name: OKD Bare-metal Workers
+  hosts: localhost
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

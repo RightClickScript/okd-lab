@@ -1,0 +1,9 @@
+---
+# playbook-7-morpheus.yml - Morpheus Appliance VM.
+# To be implemented by Coder.
+- name: Morpheus VM
+  hosts: amd_epyc
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

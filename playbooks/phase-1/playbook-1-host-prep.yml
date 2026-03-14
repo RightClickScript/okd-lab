@@ -1,0 +1,9 @@
+---
+# playbook-1-host-prep.yml - Install Docker, K3s.
+# To be implemented by Coder.
+- name: Host Prep
+  hosts: localhost
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

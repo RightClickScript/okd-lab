@@ -1,0 +1,9 @@
+---
+# playbook-3-amd-prep.yml - KVM/libvirt & L2 Networking on AMD Epyc.
+# To be implemented by Coder.
+- name: AMD Epyc Prep
+  hosts: amd_epyc
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

@@ -1,0 +1,9 @@
+---
+# playbook-6-automation.yml - Ansible AWX.
+# To be implemented by Coder.
+- name: Automation VM (AWX)
+  hosts: amd_epyc
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

@@ -1,0 +1,9 @@
+---
+# playbook-5-identity.yml - MS AD/DNS VM.
+# To be implemented by Coder.
+- name: Identity VM
+  hosts: amd_epyc
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

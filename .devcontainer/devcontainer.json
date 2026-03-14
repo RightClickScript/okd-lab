@@ -13,12 +13,12 @@
 				"terminal.integrated.defaultProfile.linux": "zsh",
 				"terminal.integrated.profiles.linux": {
 					"bash": {
-							"path": "bash",
-							"icon": "terminal-bash"
+						"path": "bash",
+						"icon": "terminal-bash"
 					},
 					"zsh": {
-							"path": "zsh",
-							"args": []
+						"path": "zsh",
+						"args": []
 					}
 				}
 			},
@@ -28,7 +28,7 @@
 				"mhutchie.git-graph",
 				"redhat.vscode-yaml",
 				"redhat.vscode-kubernetes-tools",
-				"redhat.anaible",
+				"redhat.ansible",
 				"google.geminicodeassist"
 			]
 		}
@@ -37,6 +37,6 @@
 	"containerUser": "vscode",
 	"updateRemoteUserUID": true,
 	"privileged": true,
-	"workspaceFolder": "/home/vscode/${SERVICE_NAME}",
+	"workspaceFolder": "/home/vscode/ansible",
 	"shutdownAction": "stopCompose"
 }

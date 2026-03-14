@@ -1,0 +1,13 @@
+---
+- name: Pre-Flight Check - Connectivity
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Ping www.google.com
+      ansible.builtin.command: ping -c 4 www.google.com
+      register: ping_result
+      changed_when: false
+
+    - name: Show ping result
+      ansible.builtin.debug:
+        var: ping_result.stdout_lines

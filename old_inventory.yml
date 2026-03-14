@@ -1,0 +1,455 @@
+# Refactored inventory for host pattern matching and extensibility
+all:
+  vars:
+    vg_name: ubuntu-vg
+    lv_k8s: k8s-os
+    k8s_size: 362g
+    longhorn_device: /dev/sda
+    longhorn_mount: /k8s/longhorn
+    k8s_mount: /k8s/oses
+    ansible_become: yes
+    ansible_become_password: Admin@12345
+    ansible_connection: ssh
+    ansible_password: Admin@12345
+    ansible_python_interpreter: /usr/bin/python3.12
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new -o StrictHostKeyChecking=no"
+    ansible_ssh_authKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICE/gfhVZhFyejbJOq7aCuI47U9RT+CRWSkJIB068c3m bishop@P16S"
+    ansible_user: "bishop"
+  children:
+    physical:
+      hosts:
+        192.168.199.1:
+          type: nuc
+          mac: "22:27:c6:e0:ab:1a"
+          networks:
+            - VLAN198:
+                con-name: "VLAN198"
+                if-name: "VLAN198"
+                dev: "bond0"
+                id: 198
+                ip4: 192.168.198.1
+                gw4: 192.168.198.254
+            - VLAN197:
+                con-name: "VLAN197"
+                if-name: "VLAN197"
+                dev: "bond0"
+                id: 197
+                ip4: 192.168.197.1
+                gw4: 192.168.197.254
+            - VLAN196:
+                con-name: "VLAN196"
+                if-name: "VLAN196"
+                dev: "bond0"
+                id: 196
+                ip4: 192.168.196.1
+                gw4: 192.168.196.254
+            - VLAN195:
+                con-name: "VLAN195"
+                if-name: "VLAN195"
+                dev: "bond0"
+                id: 195
+                ip4: 192.168.195.1
+                gw4: 192.168.195.254
+        192.168.199.2:
+          type: nuc
+          mac: "02:0f:a8:43:7f:47"
+          networks:
+            - VLAN198:
+                con-name: "VLAN198"
+                if-name: "VLAN198"
+                dev: "bond0"
+                id: 198
+                ip4: 192.168.198.2
+                gw4: 192.168.198.254
+            - VLAN197:
+                con-name: "VLAN197"
+                if-name: "VLAN197"
+                dev: "bond0"
+                id: 197
+                ip4: 192.168.197.2
+                gw4: 192.168.197.254
+            - VLAN196:
+                con-name: "VLAN196"
+                if-name: "VLAN196"
+                dev: "bond0"
+                id: 196
+                ip4: 192.168.196.2
+                gw4: 192.168.196.254
+            - VLAN195:
+                con-name: "VLAN195"
+                if-name: "VLAN195"
+                dev: "bond0"
+                id: 195
+                ip4: 192.168.195.2
+                gw4: 192.168.195.254
+        192.168.199.3:
+          type: nuc
+          mac: "9e:cb:b7:23:f4:38"
+          networks:
+            - VLAN198:
+                con-name: "VLAN198"
+                if-name: "VLAN198"
+                dev: "bond0"
+                id: 198
+                ip4: 192.168.198.3
+                gw4: 192.168.198.254
+            - VLAN197:
+                con-name: "VLAN197"
+                if-name: "VLAN197"
+                dev: "bond0"
+                id: 197
+                ip4: 192.168.197.3
+                gw4: 192.168.197.254
+            - VLAN196:
+                con-name: "VLAN196"
+                if-name: "VLAN196"
+                dev: "bond0"
+                id: 196
+                ip4: 192.168.196.3
+                gw4: 192.168.196.254
+            - VLAN195:
+                con-name: "VLAN195"
+                if-name: "VLAN195"
+                dev: "bond0"
+                id: 195
+                ip4: 192.168.195.3
+                gw4: 192.168.195.254
+        192.168.199.4:
+          type: sms
+          mac: "5e:dc:07:8f:3e:01"
+          networks:
+            - VLAN198:
+                con-name: "VLAN198"
+                if-name: "VLAN198"
+                dev: "bond0"
+                id: 198
+                ip4: 192.168.198.4
+                gw4: 192.168.198.254
+            - VLAN197:
+                con-name: "VLAN197"
+                if-name: "VLAN197"
+                dev: "bond0"
+                id: 197
+                ip4: 192.168.197.4
+                gw4: 192.168.197.254
+            - VLAN196:
+                con-name: "VLAN196"
+                if-name: "VLAN196"
+                dev: "bond0"
+                id: 196
+                ip4: 192.168.196.4
+                gw4: 192.168.196.254
+            - VLAN195:
+                con-name: "VLAN195"
+                if-name: "VLAN195"
+                dev: "bond0"
+                id: 195
+                ip4: 192.168.195.4
+                gw4: 192.168.195.254
+        192.168.199.5:
+          type: lpt
+          networks:
+            - VLAN198:
+                con-name: "VLAN198"
+                if-name: "VLAN198"
+                dev: "bond0"
+                id: 198
+                ip4: 192.168.198.5
+                gw4: 192.168.198.254
+            - VLAN197:
+                con-name: "VLAN197"
+                if-name: "VLAN197"
+                dev: "bond0"
+                id: 197
+                ip4: 192.168.197.5
+                gw4: 192.168.197.254
+            - VLAN196:
+                con-name: "VLAN196"
+                if-name: "VLAN196"
+                dev: "bond0"
+                id: 196
+                ip4: 192.168.196.5
+                gw4: 192.168.196.254
+            - VLAN195:
+                con-name: "VLAN195"
+                if-name: "VLAN195"
+                dev: "bond0"
+                id: 195
+                ip4: 192.168.195.5
+                gw4: 192.168.195.254
+      vars:
+        # Add any physical host-specific vars here if needed
+      children:
+        nucs: # <-- NEW GROUP
+          hosts:
+            192.168.199.1:
+            192.168.199.2:
+            192.168.199.3:
+        sms: # <-- NEW GROUP
+          hosts:
+            192.168.199.4:
+        lpt: # <-- NEW GROUP
+          hosts:
+            192.168.199.5:
+    k8s:
+      children:
+        lxd_templates:
+          hosts:
+            192.168.195.11:
+              node_name: lxd-template-1
+              parent: 192.168.199.1
+              network: vlan195
+              role: lxd-template
+            192.168.195.12:
+              node_name: lxd-template-2
+              parent: 192.168.199.2
+              network: vlan195
+              role: lxd-template
+            192.168.195.13:
+              node_name: lxd-template-3
+              parent: 192.168.199.3
+              network: vlan195
+              role: lxd-template
+            192.168.195.14:
+              node_name: lxd-template-4
+              parent: 192.168.199.4
+              network: vlan195
+              role: lxd-template
+            192.168.195.15:
+              node_name: lxd-template-5
+              parent: 192.168.199.5
+              network: vlan195
+              role: lxd-template
+          vars:
+            k8s_version: "1.31"
+        prod:
+          children:
+            prod_control_plane:
+              hosts:
+                192.168.198.11:
+                  node_name: k8s-cp-p1
+                  parent: 192.168.199.4
+                  network: vlan198
+                  role: control-plane
+                  id: 1
+                192.168.198.12:
+                  node_name: k8s-cp-p2
+                  parent: 192.168.199.4
+                  network: vlan198
+                  role: control-plane
+                  id: 2
+                192.168.198.13:
+                  node_name: k8s-cp-p3
+                  parent: 192.168.199.4
+                  network: vlan198
+                  role: control-plane
+                  id: 3
+            prod_workers:
+              hosts:
+                192.168.198.101:
+                  node_name: k8s-wk-p1
+                  parent: 192.168.199.1
+                  network: vlan198
+                  role: worker
+                192.168.198.102:
+                  node_name: k8s-wk-p2
+                  parent: 192.168.199.1
+                  network: vlan198
+                  role: worker
+                192.168.198.103:
+                  node_name: k8s-wk-p3
+                  parent: 192.168.199.1
+                  network: vlan198
+                  role: worker
+                192.168.198.104:
+                  node_name: k8s-wk-p4
+                  parent: 192.168.199.2
+                  network: vlan198
+                  role: worker
+                192.168.198.111:
+                  node_name: k8s-wk-p5
+                  parent: 192.168.199.2
+                  network: vlan198
+                  role: worker
+                192.168.198.112:
+                  node_name: k8s-wk-p6
+                  parent: 192.168.199.2
+                  network: vlan198
+                  role: worker
+          vars:
+            APISERVER_DEST_PORT: 8443
+            APISERVER_SRC_PORT: 6443
+            cni_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml"
+            cni_pods_namespace: "kube-flannel"
+            default_ram: "12GiB"
+            default_vcpu: "4"
+            keepalived_interface: "enp5s0"
+            keepalived_virtual_router_id: 51
+            k8s_cluster_name: "k8s-prod"
+            k8s_version: "1.31"
+            lxd_template_alias: "lxd-template"
+            longhorn_disk_size: "100GiB"
+            metallb_ip_range: "192.168.198.200-192.168.198.250"
+            metallb_namespace: "metallb-system"
+            metallb_pool_name: "default-pool"
+            metallb_version: "v0.14.9"
+            pod_network_cidr: "10.244.0.0/16"
+            root_disk_size: "40GiB"
+            virtual_ip: "192.168.198.10"
+            virtual_ip_cidr: 24
+            vm_gateway_suffix: ".254"
+            vm_subnet_mask: "/24"
+        dev:
+          children:
+            dev_control_plane:
+              hosts:
+                192.168.197.11:
+                  node_name: k8s-cp-d1
+                  parent: 192.168.199.4
+                  network: vlan197
+                  role: control-plane
+                  id: 1
+                192.168.197.12:
+                  node_name: k8s-cp-d2
+                  parent: 192.168.199.4
+                  network: vlan197
+                  role: control-plane
+                  id: 2
+                192.168.197.13:
+                  node_name: k8s-cp-d3
+                  parent: 192.168.199.4
+                  network: vlan197
+                  role: control-plane
+                  id: 3
+            dev_workers:
+              hosts:
+                192.168.197.101:
+                  node_name: k8s-wk-d1
+                  parent: 192.168.199.1
+                  network: vlan197
+                  role: worker
+                192.168.197.102:
+                  node_name: k8s-wk-d2
+                  parent: 192.168.199.1
+                  network: vlan197
+                  role: worker
+                192.168.197.103:
+                  node_name: k8s-wk-d3
+                  parent: 192.168.199.2
+                  network: vlan197
+                  role: worker
+                192.168.197.104:
+                  node_name: k8s-wk-d4
+                  parent: 192.168.199.2
+                  network: vlan197
+                  role: worker
+                192.168.197.105:
+                  node_name: k8s-wk-d5
+                  parent: 192.168.199.3
+                  network: vlan197
+                  role: worker
+                192.168.197.106:
+                  node_name: k8s-wk-d6
+                  parent: 192.168.199.3
+                  network: vlan197
+                  role: worker
+          vars:
+            APISERVER_DEST_PORT: 8443
+            APISERVER_SRC_PORT: 6443
+            cni_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml"
+            cni_pods_namespace: "kube-flannel"
+            default_ram: "12GiB"
+            default_vcpu: "4"
+            keepalived_interface: "enp5s0"
+            keepalived_virtual_router_id: 51
+            k8s_cluster_name: "k8s-dev"
+            k8s_version: "1.31"
+            lxd_template_alias: "lxd-template"
+            longhorn_disk_size: "100GiB"
+            metallb_ip_range: "192.168.197.200-192.168.197.250"
+            metallb_namespace: "metallb-system"
+            metallb_pool_name: "default-pool"
+            metallb_version: "v0.14.9"
+            pod_network_cidr: "10.244.0.0/16"
+            root_disk_size: "40GiB"
+            virtual_ip: "192.168.197.10"
+            virtual_ip_cidr: 24
+            vm_gateway_suffix: ".254"
+            vm_subnet_mask: "/24"
+        mgmt:
+          children:
+            mgmt_control_plane:
+              hosts:
+                192.168.196.11:
+                  node_name: k8s-cp-m1
+                  parent: 192.168.199.4
+                  network: vlan196
+                  role: control-plane
+                  id: 1
+                192.168.196.12:
+                  node_name: k8s-cp-m2
+                  parent: 192.168.199.4
+                  network: vlan196
+                  role: control-plane
+                  id: 2
+                192.168.196.13:
+                  node_name: k8s-cp-m3
+                  parent: 192.168.199.4
+                  network: vlan196
+                  role: control-plane
+                  id: 3
+            mgmt_workers:
+              hosts:
+                192.168.196.101:
+                  node_name: k8s-wk-m1
+                  parent: 192.168.199.1
+                  network: vlan196
+                  role: worker
+                192.168.196.102:
+                  node_name: k8s-wk-m2
+                  parent: 192.168.199.1
+                  network: vlan196
+                  role: worker
+                192.168.196.103:
+                  node_name: k8s-wk-m3
+                  parent: 192.168.199.1
+                  network: vlan196
+                  role: worker
+                192.168.196.104:
+                  node_name: k8s-wk-m4
+                  parent: 192.168.199.2
+                  network: vlan196
+                  role: worker
+                192.168.196.105:
+                  node_name: k8s-wk-m5
+                  parent: 192.168.199.2
+                  network: vlan196
+                  role: worker
+                192.168.196.106:
+                  node_name: k8s-wk-m6
+                  parent: 192.168.199.2
+                  network: vlan196
+                  role: worker
+          vars:
+            APISERVER_DEST_PORT: 8443
+            APISERVER_SRC_PORT: 6443
+            cni_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml"
+            cni_pods_namespace: "kube-flannel"
+            default_ram: "12GiB"
+            default_vcpu: "4"
+            keepalived_interface: "enp5s0"
+            keepalived_virtual_router_id: 51
+            k8s_cluster_name: "k8s-mgmt"
+            k8s_version: "1.31"
+            lxd_template_alias: "lxd-template"
+            longhorn_disk_size: "100GiB"
+            metallb_ip_range: "192.168.196.200-192.168.196.250"
+            metallb_namespace: "metallb-system"
+            metallb_pool_name: "default-pool"
+            metallb_version: "v0.14.9"
+            pod_network_cidr: "10.244.0.0/16"
+            root_disk_size: "40GiB"
+            virtual_ip: "192.168.196.10"
+            virtual_ip_cidr: 24
+            vm_gateway_suffix: ".254"
+            vm_subnet_mask: "/24"

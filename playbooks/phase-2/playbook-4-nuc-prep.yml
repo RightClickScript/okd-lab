@@ -1,0 +1,9 @@
+---
+# playbook-4-nuc-prep.yml - Wake-on-LAN & FCOS Ignition web server.
+# To be implemented by Coder.
+- name: NUC Prep
+  hosts: localhost
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

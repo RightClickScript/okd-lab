@@ -1,0 +1,36 @@
+all:
+  vars:
+    ansible_user: "bishop"
+    ansible_password: "Admin@12345"
+    ansible_become_password: "Admin@12345"
+    ansible_python_interpreter: "/usr/bin/python3.12"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new -o StrictHostKeyChecking=no"
+  hosts:
+    localhost:
+      ansible_connection: local
+    container_host:
+      ansible_host: 192.168.199.5
+    amd_epyc:
+      ansible_host: 192.168.199.4
+      mac: "5e:dc:07:8f:3e:01"
+    nuc_1:
+      ansible_host: 192.168.199.1
+      mac: "22:27:c6:e0:ab:1a"
+    nuc_2:
+      ansible_host: 192.168.199.2
+      mac: "02:0f:a8:43:7f:47"
+    nuc_3:
+      ansible_host: 192.168.199.3
+      mac: "9e:cb:b7:23:f4:38"
+  children:
+    local_spark:
+      hosts:
+        container_host:
+    management_plane:
+      hosts:
+        amd_epyc:
+    compute_plane:
+      hosts:
+        nuc_1:
+        nuc_2:
+        nuc_3:

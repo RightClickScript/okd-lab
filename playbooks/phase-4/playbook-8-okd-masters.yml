@@ -1,0 +1,9 @@
+---
+# playbook-8-okd-masters.yml - OKD Control Plane VMs (AMD Epyc).
+# To be implemented by Coder.
+- name: OKD Control Plane
+  hosts: amd_epyc
+  tasks:
+    - name: Placeholder
+      debug:
+        msg: "Scaffolded playbook"

@@ -23,6 +23,10 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
     * **Ansible AWX:** The "Product" (Day-2 operations).
 * **Idempotency:** All playbooks must be idempotent.
 * **Storage:** AMD Epyc hosts NFS/iSCSI for OKD VM Live Migration.
+* **Hardware & Boot Lifecycle Management (The NUC Compute Plane):** We enforce a strict separation between daily power-on events and destructive OS provisioning.
+    * **Standard Power-On (Daily Boot):** Handled via Wake-on-LAN. **CRITICAL:** The standard `community.general.wakeonlan` Ansible module silently fails against these Intel NUC NICs. The AI Coder MUST NOT use it. All power-on tasks must use `ansible.builtin.command` to execute the OS-level `wakeonlan {{ mac_address }}` package directly from the Container Host, looping over the inventory MAC variables.
+    * **Bare-Metal Provisioning (The "Phoenix" Rebuild):** Handled via Out-of-Band IP-KVM. The NUCs are connected to a GL.iNet IP-KVM (PiKVM fork) on an 8-port switch. Do not build a PXE server for OS deployment. The rebuild playbooks must use the `ansible.builtin.uri` module to hit the KVM's REST API. This API will be used to mount the Fedora CoreOS ISO as virtual media, force a reboot, and inject the necessary BIOS/boot menu hotkeys to automate the fresh installation.
+
 
 ## 🛠️ Day-0 Hardware Readiness (Pre-Bootstrap)
 
@@ -45,6 +49,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 *   **VLAN Mapping:**
     *   **VLAN 199 (192.168.199.0/24):** Physical Management (Untagged/Native or Tagged).
     *   **VLAN 198 (192.168.198.0/24):** VM & OKD Compute (Tagged).
+
 
 ### Host Assignment Table
 | Host Role | Physical Name | Management IP | MAC Address |

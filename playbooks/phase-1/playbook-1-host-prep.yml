@@ -1,9 +1,104 @@
 ---
-# playbook-1-host-prep.yml - Install Docker, K3s.
-# To be implemented by Coder.
-- name: Host Prep
-  hosts: localhost
+- name: Phase 1 - Container Host Prep (Laptop)
+  hosts: local_spark
+  become: true
+  gather_facts: true
+
+  vars:
+    # Standard networking vars
+    mgmt_ip: "192.168.199.5"
+    mgmt_vlan: 199
+    vm_vlan: 198
+    # Identify the primary interface (e.g., enp1s0, eth0)
+    # We will attempt to find it automatically, but you can override here.
+    physical_iface: "{{ ansible_default_ipv4.interface | default('eth0') }}"
+
   tasks:
-    - name: Placeholder
-      debug:
-        msg: "Scaffolded playbook"
+    - name: 🛑 SANITIZATION - Remove LXD/LXC
+      block:
+        - name: Stop and disable LXD/LXC services
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop:
+            - lxd.service
+            - lxd-agent.service
+            - lxcfs.service
+          ignore_errors: true
+
+        - name: Purge LXD/LXC packages
+          ansible.builtin.apt:
+            name: ["lxd", "lxd-client", "lxc", "lxcfs"]
+            state: absent
+            purge: true
+
+        - name: Remove LXD bridges and artifacts
+          ansible.builtin.shell: |
+            ip link delete lxdbr0 || true
+            rm -rf /var/lib/lxd
+          ignore_errors: true
+
+    - name: 🌐 NETWORKING - Standardize with Netplan
+      block:
+        - name: Create backup directory for netplan
+          ansible.builtin.file:
+            path: /etc/netplan/backup
+            state: directory
+            mode: '0755'
+
+        - name: Backup existing Netplan files
+          ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
+          args:
+            creates: /etc/netplan/backup/backup_done
+
+        - name: Apply Infrastructure Netplan (bond0 + VLANs)
+          ansible.builtin.copy:
+            dest: /etc/netplan/99-morpheus-infra.yaml
+            content: |
+              network:
+                version: 2
+                ethernets:
+                  {{ physical_iface }}:
+                    dhcp4: no
+                bonds:
+                  bond0:
+                    interfaces: [ {{ physical_iface }} ]
+                    parameters:
+                      mode: active-backup
+                    dhcp4: no
+                vlans:
+                  vlan{{ mgmt_vlan }}:
+                    id: {{ mgmt_vlan }}
+                    link: bond0
+                    addresses: [ {{ mgmt_ip }}/24 ]
+                    gateway4: 192.168.199.254
+                    nameservers:
+                      addresses: [ 8.8.8.8, 1.1.1.1 ]
+                  vlan{{ vm_vlan }}:
+                    id: {{ vm_vlan }}
+                    link: bond0
+                    dhcp4: no
+
+        - name: Apply netplan (This will briefly disconnect SSH)
+          ansible.builtin.shell: netplan apply
+          async: 10
+          poll: 0
+
+    - name: 📦 SOFTWARE - Install Docker & K3s
+      block:
+        - name: Install Docker
+          ansible.builtin.include_role:
+            name: geerlingguy.docker
+          vars:
+            docker_install_compose: true
+          ignore_errors: true # In case you want to do this manually later
+
+        - name: Install K3s (Local Factory)
+          ansible.builtin.shell: |
+            curl -sfL https://get.k3s.io | sh -s - \
+              --write-kubeconfig-mode 644 \
+              --disable traefik \
+              --node-ip {{ mgmt_ip }}
+          args:
+            creates: /usr/local/bin/k3s

@@ -27,11 +27,12 @@ fi
 # 4. Install Ansible inside the Virtual Environment
 echo "[4/5] Installing Ansible and core collections..."
 source "$VENV_DIR/bin/activate"
-pip install --upgrade pip -q
-pip install "ansible-core>=2.15.0" -q
+pip install --upgrade pip
+pip install "ansible-core>=2.15.0"
 
 # 5. Install required Ansible collections
-ansible-galaxy collection install community.general ansible.posix -q
+echo "[5/5] Installing Ansible collections..."
+ansible-galaxy collection install community.general ansible.posix
 
 echo "---------------------------------------"
 echo "Bootstrap Complete!"

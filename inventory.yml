@@ -1,9 +1,8 @@
 all:
   vars:
-    default_password: "Admin@12345"
     ansible_user: "bishop"
-    ansible_password: "{{ default_password }}"
-    ansible_become_password: "{{ default_password }}"
+    ansible_password: "Admin@12345"
+    ansible_become_password: "Admin@12345"
     ansible_python_interpreter: "/usr/bin/python3.12"
     ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new -o StrictHostKeyChecking=no"
   hosts:

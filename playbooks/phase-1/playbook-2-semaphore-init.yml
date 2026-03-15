@@ -8,7 +8,6 @@
     # We will use the original data we migrated to /opt/semaphore
     semaphore_root: "/opt/semaphore"
     semaphore_image: "semaphoreui/semaphore:latest" # Adjust version if needed based on original
-    default_password: "{{ default_password }}" # Use a secure password in production
     postgres_image: "postgres" # Adjust version if needed based on original
     mgmt_ip: "192.168.199.5"
 
@@ -24,7 +23,7 @@
               restart: always
               environment:
                 POSTGRES_USER: semaphore
-                POSTGRES_PASSWORD: "{{ default_password }}"
+                POSTGRES_PASSWORD: "{{ ansible_password }}"
                 POSTGRES_DB: semaphore
               volumes:
                 - "{{ semaphore_root }}/postgres:/var/lib/postgresql/data"
@@ -38,7 +37,7 @@
                 - "3000:3000"
               environment:
                 SEMAPHORE_DB_USER: semaphore
-                SEMAPHORE_DB_PASS: "{{ default_password }}"
+                SEMAPHORE_DB_PASS: "{{ ansible_password }}"
                 SEMAPHORE_DB_HOST: semaphore_db
                 SEMAPHORE_DB_PORT: 5432
                 SEMAPHORE_DB_DIALECT: postgres

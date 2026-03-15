@@ -11,10 +11,6 @@
     vm_vlan: 198
 
   tasks:
-    - name: DEBUG - Print physical_iface value
-      ansible.builtin.debug:
-        var: physical_iface
-
     - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
       block:
         - name: Gather service facts to check for LXD/LXC
@@ -80,29 +76,23 @@
                 ethernets:
                   {{ physical_iface }}:
                     dhcp4: no
-                    dhcp6: no
                 bonds:
                   bond0:
                     interfaces: [ "{{ physical_iface }}" ]
                     parameters:
                       mode: active-backup
-                    dhcp4: no
-                    dhcp6: no
-                vlans:
-                  vlan{{ mgmt_vlan }}:
-                    id: {{ mgmt_vlan }}
-                    link: bond0
                     addresses: [ "{{ mgmt_ip }}/24" ]
                     routes:
                       - to: default
                         via: 192.168.199.254
                     nameservers:
-                      addresses: [ 8.8.8.8, 1.1.1.1 ]
+                      addresses: [ 192.168.1.1 ]
+                      search: [ homelab.local ]
+                vlans:
                   vlan{{ vm_vlan }}:
                     id: {{ vm_vlan }}
                     link: bond0
-                    dhcp4: no
-                    dhcp6: no
+                    dhcp4: yes
 
         - name: Apply netplan configuration
           ansible.builtin.command: netplan apply

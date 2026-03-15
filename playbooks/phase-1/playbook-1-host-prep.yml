@@ -139,9 +139,21 @@
             delay: 10
             timeout: 300
 
+    - name: 💻 ENVIRONMENT - Configure .bashrc
+      ansible.builtin.blockinfile:
+        path: "/home/bishop/.bashrc"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - INFRA FACTORY"
+        block: |
+          # Automatically navigate to project
+          cd /home/bishop/source/okd-lab || true
+          # Automatically activate Ansible virtual environment
+          if [ -d ".venv" ]; then
+            source .venv/bin/activate
+          fi
+          # Export K3s Kubeconfig
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     - name: 📦 SOFTWARE - Install Docker & K3s
       block:
-        - name: Install dependencies for Docker
           ansible.builtin.apt:
             name: [apt-transport-https, ca-certificates, curl, software-properties-common, gnupg]
             state: present

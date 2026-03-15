@@ -31,6 +31,7 @@
         release_namespace: "{{ vault_namespace }}"
         create_namespace: true
         chart_version: "{{ vault_version }}"
+        update_repo_cache: true
         values:
           server:
             # Simple standalone mode for local management
@@ -39,6 +40,15 @@
               size: 10Gi
             standalone:
               enabled: true
+            service:
+              type: NodePort
+              nodePort: 30001
+            # Enable the UI for easy access
+            ui:
+              enabled: true
+              serviceType: NodePort
+              serviceNodePort: 30002
+        # Ensure changes to values (like NodePort) are applied
         wait: true
         kubeconfig: "{{ kubeconfig }}"
 

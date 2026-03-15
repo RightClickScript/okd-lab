@@ -16,7 +16,7 @@
     - name: 📦 HELM - Add AWX Operator Repo
       kubernetes.core.helm_repository:
         name: awx-operator
-        repo_url: "https://ansible-operator.github.io/awx-operator-helm/"
+        repo_url: "https://ansible-community.github.io/awx-operator-helm/"
 
     - name: 🚀 DEPLOY - Install AWX Operator via Helm
       kubernetes.core.helm:

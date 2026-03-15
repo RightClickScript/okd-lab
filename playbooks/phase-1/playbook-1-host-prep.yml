@@ -16,11 +16,10 @@
   tasks:
     - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
       block:
-        - name: Purge LXD snap package
+        - name: Remove LXD snap package
           community.general.snap:
             name: lxd
             state: absent
-            purge: true
 
         - name: Stop and disable apt-based LXD/LXC services
           ansible.builtin.systemd:

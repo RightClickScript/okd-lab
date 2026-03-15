@@ -89,12 +89,13 @@
                       - to: default
                         via: 192.168.199.254
                     nameservers:
-                      addresses: [ 1.1.1.1, 8.8.8.8 ]
+                      addresses: [ 192.168.1.1 ]
+                      search: [ homelab.local ]
                 vlans:
                   vlan{{ vm_vlan }}:
                     id: {{ vm_vlan }}
                     link: bond0
-                    dhcp4: no
+                    dhcp4: yes
 
         - name: Apply netplan configuration
           ansible.builtin.command: netplan apply

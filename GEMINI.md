@@ -67,7 +67,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 
 ### Phase 1: The Local Spark (Container Host Laptop)
 - [x] `scripts/bootstrap.sh`: Install Git, Python, Ansible CLI.
-- [ ] `playbooks/phase-1/playbook-1-host-prep.yml`: Install Docker, K3s.
+- [x] `playbooks/phase-1/playbook-1-host-prep.yml`: Install Docker, K3s.
 - [ ] `playbooks/phase-1/playbook-2-semaphore-init.yml`: Deploy Semaphore UI and HashiCorp Vault.
 
 ### Phase 2: The Hypervisor Foundation (AMD Epyc & NUCs)

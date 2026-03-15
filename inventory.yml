@@ -10,6 +10,7 @@ all:
       ansible_connection: local
     container_host:
       ansible_host: 192.168.199.5
+      physical_iface: enp0s25
     amd_epyc:
       ansible_host: 192.168.199.4
       mac: "5e:dc:07:8f:3e:01"

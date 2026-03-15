@@ -10,14 +10,9 @@
     mgmt_vlan: 199
     vm_vlan: 198
     # Identify the primary interface (e.g., enp1s0, eth0)
-    # We will attempt to find it automatically, but you can override here.
-    physical_iface: "{{ ansible_default_ipv4.interface | default('eth0') }}"
+    physical_iface: "{{ physical_iface | default(ansible_facts.default_ipv4.interface) | default('eth0') }}"
 
   tasks:
-    - name: DEBUG - Print physical_iface value
-      ansible.builtin.debug:
-        var: physical_iface
-
     # - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
     #   block:
     #     - name: Gather service facts to check for LXD/LXC

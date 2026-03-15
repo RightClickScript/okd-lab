@@ -7,7 +7,8 @@
   vars:
     # We will use the original data we migrated to /opt/semaphore
     semaphore_root: "/opt/semaphore"
-    semaphore_image: "semaphoreui/semaphore:v2.16.18"
+    semaphore_image: "semaphoreui/semaphore:latest" # Adjust version if needed based on original
+    default_password: "{{ default_password }}" # Use a secure password in production
     postgres_image: "postgres" # Adjust version if needed based on original
     mgmt_ip: "192.168.199.5"
 

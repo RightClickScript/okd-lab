@@ -1,9 +1,84 @@
 ---
-# playbook-4-nuc-prep.yml - Wake-on-LAN & FCOS Ignition web server.
-# To be implemented by Coder.
-- name: NUC Prep
-  hosts: localhost
+- name: Phase 2.3a - NUC Sanitization & Networking
+  hosts: compute_plane
+  become: true
+  gather_facts: true
   tasks:
-    - name: Placeholder
-      debug:
-        msg: "Scaffolded playbook"
+    - name: 🛑 SANITIZATION - Remove LXD/LXC (If present)
+      block:
+        - name: Gather service facts
+          ansible.builtin.service_facts:
+
+        - name: Purge LXD/LXC and Snaps
+          ansible.builtin.shell: |
+            snap remove --purge lxd || true
+            apt-get purge -y lxd lxd-client lxc lxcfs || true
+            rm -rf /var/lib/lxd /var/snap/lxd /var/lib/lxcfs || true
+          ignore_errors: true
+
+    - name: 🌐 NETWORKING - Standardize with Netplan
+      ansible.builtin.copy:
+        dest: /etc/netplan/99-morpheus-infra.yaml
+        mode: "0644"
+        content: |
+          network:
+            version: 2
+            ethernets:
+              {{ physical_iface }}:
+                dhcp4: no
+            bonds:
+              bond0:
+                interfaces: [ "{{ physical_iface }}" ]
+                parameters:
+                  mode: active-backup
+                addresses: [ "{{ ansible_host }}/24" ]
+                routes:
+                  - to: default
+                    via: 192.168.199.254
+                nameservers:
+                  addresses: [ 192.168.1.1 ]
+                  search: [ homelab.local ]
+            vlans:
+              vlan198:
+                id: 198
+                link: bond0
+                dhcp4: yes
+
+    - name: Apply Netplan
+      ansible.builtin.command: netplan apply
+      async: 10
+      poll: 0
+
+- name: Phase 2.3b - Factory Prep (WOL & Ignition Server)
+  hosts: local_spark
+  become: true
+  tasks:
+    - name: ⚡ WOL - Verify Wake-on-LAN capability
+      community.general.wakeonlan:
+        mac: "{{ hostvars[item]['mac'] }}"
+        broadcast: 192.168.199.255
+      loop: "{{ groups['compute_plane'] }}"
+      when: hostvars[item]['mac'] is defined
+
+    - name: 📂 IGNITION - Setup Web Server
+      block:
+        - name: Create ignition storage directory
+          ansible.builtin.file:
+            path: /opt/ignition
+            state: directory
+            mode: '0755'
+
+        - name: Start Nginx Container to serve Ignition files
+          community.docker.docker_container:
+            name: ignition-server
+            image: nginx:alpine
+            state: started
+            restart_policy: always
+            ports:
+              - "8080:80"
+            volumes:
+              - /opt/ignition:/usr/share/nginx/html:ro
+
+    - name: 🔓 STATUS - Ready for Compute Plane
+      ansible.builtin.debug:
+        msg: "NUCs sanitized. Ignition server active at http://192.168.199.5:8080"

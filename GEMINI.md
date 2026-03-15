@@ -73,7 +73,8 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 - [x] `playbooks/phase-1/playbook-2c-awx-init.yml`: Deploy Ansible AWX Operator on K3s.
 
 ### Phase 2: The Hypervisor Foundation (AMD Epyc & NUCs)
-- [ ] `playbooks/phase-2/playbook-3-amd-prep.yml`: KVM/libvirt & L2 Networking on AMD Epyc.
+- [x] `playbooks/phase-2/playbook-3-amd-prep-part1.yml`: Sanitization & Networking on AMD Epyc.
+- [ ] `playbooks/phase-2/playbook-3-amd-prep-part2.yml`: KVM/libvirt & Storage on AMD Epyc.
 - [ ] `playbooks/phase-2/playbook-4-nuc-prep.yml`: Wake-on-LAN & FCOS Ignition web server.
 
 ### Phase 3: The Enterprise Core (AMD Epyc KVM)

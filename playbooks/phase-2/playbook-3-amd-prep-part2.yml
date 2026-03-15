@@ -1,0 +1,67 @@
+---
+- name: Phase 2.2 - AMD Epyc Hypervisor & Storage
+  hosts: management_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    # Directory-based storage pool for simplicity in lab environment
+    storage_pool_path: "/var/lib/libvirt/images"
+    storage_pool_name: "default"
+
+  tasks:
+    - name: 🏗️ HYPERVISOR - Install KVM & Libvirt
+      ansible.builtin.apt:
+        name: 
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
+          - bridge-utils
+          - virtinst
+          - virt-manager
+          - ovmf
+        state: present
+
+    - name: 👥 ACCESS - Add bishop to libvirt group
+      ansible.builtin.user:
+        name: bishop
+        groups: libvirt,kvm
+        append: true
+
+    - name: 📁 STORAGE - Configure Libvirt Storage Pool
+      block:
+        - name: Ensure storage directory exists
+          ansible.builtin.file:
+            path: "{{ storage_pool_path }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Define Libvirt Storage Pool
+          community.libvirt.virt_pool:
+            command: define
+            name: "{{ storage_pool_name }}"
+            xml: |
+              <pool type='dir'>
+                <name>{{ storage_pool_name }}</name>
+                <target>
+                  <path>{{ storage_pool_path }}</path>
+                </target>
+              </pool>
+
+        - name: Start and Autostart Storage Pool
+          community.libvirt.virt_pool:
+            name: "{{ storage_pool_name }}"
+            state: active
+            autostart: true
+
+    - name: 🌐 NETWORKING - Verify Libvirt Bridge
+      ansible.builtin.shell: |
+        virsh net-list --all
+      register: virsh_net
+      changed_when: false
+
+    - name: 🔓 STATUS - Ready for VMs
+      ansible.builtin.debug:
+        msg: "AMD Epyc is now ready for VM deployment in Phase 3."

@@ -15,7 +15,7 @@
   tasks:
     - name: DEBUG - Print physical_iface value
       ansible.builtin.debug:
-        msg: "Using physical interface: {{ physical_iface }}"
+        var: physical_iface
 
     # - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
     #   block:

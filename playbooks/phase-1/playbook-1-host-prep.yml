@@ -49,6 +49,9 @@
           ansible.builtin.shell: snap remove --purge docker
           ignore_errors: true
 
+        - name: Gather service facts
+          ansible.builtin.service_facts:
+
         - name: Stop and disable LXD/LXC services
           ansible.builtin.systemd:
             name: "{{ item }}"
@@ -58,7 +61,8 @@
             - lxd.service
             - lxd-agent.service
             - lxcfs.service
-          when: "item in ansible_facts.services"
+          when: "ansible_facts.services[item] is defined"
+          ignore_errors: true
 
         - name: Remove LXD snap package
           community.general.snap:

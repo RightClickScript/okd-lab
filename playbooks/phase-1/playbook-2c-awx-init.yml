@@ -24,15 +24,8 @@
         chart_ref: awx-operator/awx-operator
         release_namespace: "{{ awx_namespace }}"
         create_namespace: true
-        chart_version: "{{ awx_operator_version }}"
-        update_repo_cache: true
-        values:
-          # Override the failing GCR image with the stable Quay image
-          operator-controller-containers:
-            kube-rbac-proxy:
-              image: quay.io/brancz/kube-rbac-proxy:v0.15.0
-        # Increase timeout for slow image pulls
-        wait: true
+        # Helm will now see the existing release and skip or update
+        wait: false
         kubeconfig: "{{ kubeconfig }}"
 
     - name: 🔑 SECRET - Create Admin Password

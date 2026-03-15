@@ -1,0 +1,96 @@
+---
+- name: Phase 2.1 - AMD Epyc Sanitization & Networking
+  hosts: management_plane
+  become: true
+  gather_facts: true
+
+  vars:
+    # Standard networking vars (aligned with GEMINI.md)
+    mgmt_ip: "192.168.199.4"
+    mgmt_vlan: 199
+    vm_vlan: 198
+    # physical_iface is now pulled from inventory.yml
+
+  tasks:
+    - name: 🛑 SANITIZATION - Remove LXD/LXC
+      block:
+        - name: Gather service facts
+          ansible.builtin.service_facts:
+
+        - name: Stop and disable LXD/LXC services
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop:
+            - lxd.service
+            - lxd-agent.service
+            - lxcfs.service
+          when: "ansible_facts.services[item] is defined"
+          ignore_errors: true
+
+        - name: Purge LXD/LXC packages
+          ansible.builtin.apt:
+            name: ["lxd", "lxd-client", "lxc", "lxcfs"]
+            state: absent
+            purge: true
+
+        - name: Remove remaining LXD/LXC artifacts
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /var/lib/lxd
+            - /var/snap/lxd
+            - /var/lib/lxcfs
+
+    - name: 🌐 NETWORKING - Standardize with Netplan
+      block:
+        - name: Create backup directory for netplan
+          ansible.builtin.file:
+            path: /etc/netplan/backup
+            state: directory
+            mode: "0755"
+
+        - name: Backup existing Netplan files
+          ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
+          args:
+            creates: /etc/netplan/backup/backup_done
+          changed_when: false
+
+        - name: Apply Infrastructure Netplan (bond0 + VLANs)
+          ansible.builtin.copy:
+            dest: /etc/netplan/99-morpheus-infra.yaml
+            mode: "0644"
+            content: |
+              network:
+                version: 2
+                ethernets:
+                  {{ physical_iface }}:
+                    dhcp4: no
+                bonds:
+                  bond0:
+                    interfaces: [ "{{ physical_iface }}" ]
+                    parameters:
+                      mode: active-backup
+                    addresses: [ "{{ mgmt_ip }}/24" ]
+                    routes:
+                      - to: default
+                        via: 192.168.199.254
+                    nameservers:
+                      addresses: [ 1.1.1.1, 8.8.8.8 ]
+                vlans:
+                  vlan{{ vm_vlan }}:
+                    id: {{ vm_vlan }}
+                    link: bond0
+                    dhcp4: no
+
+        - name: Apply netplan configuration
+          ansible.builtin.command: netplan apply
+          async: 10
+          poll: 0
+
+        - name: Wait for host to become reachable again
+          ansible.builtin.wait_for_connection:
+            delay: 5
+            timeout: 60

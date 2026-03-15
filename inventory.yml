@@ -20,7 +20,7 @@ all:
     amd_epyc:
       ansible_host: 192.168.199.4
       mac: "5e:dc:07:8f:3e:01"
-      physical_iface: enp5s0
+      physical_iface: eno1
     nuc_1:
       ansible_host: 192.168.199.1
       mac: "22:27:c6:e0:ab:1a"

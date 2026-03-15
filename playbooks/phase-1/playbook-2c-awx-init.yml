@@ -25,7 +25,8 @@
         release_namespace: "{{ awx_namespace }}"
         create_namespace: true
         chart_version: "{{ awx_operator_version }}"
-        wait: true
+        # Increase timeout for slow image pulls
+        wait: false
         kubeconfig: "{{ kubeconfig }}"
 
     - name: 🔑 SECRET - Create Admin Password

@@ -20,6 +20,7 @@
           - virtinst
           - virt-manager
           - ovmf
+          - python3-lxml
         state: present
 
     - name: 👥 ACCESS - Add bishop to libvirt group

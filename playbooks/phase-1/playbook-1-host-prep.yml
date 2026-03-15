@@ -11,12 +11,45 @@
     vm_vlan: 198
 
   tasks:
-    - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
+    - name: 💾 BACKUP & MIGRATE - Preserve Semaphore Data (Snap to /opt)
       block:
-        - name: Gather service facts to check for LXD/LXC
-          ansible.builtin.service_facts:
+        - name: Check if Semaphore Snap volumes exist
+          ansible.builtin.stat:
+            path: /var/snap/docker/common/var-lib-docker/volumes/bishop_semaphore_config/_data
+          register: semaphore_exists
 
-        - name: Stop and disable apt-based LXD/LXC services
+        - name: Create permanent Semaphore directories
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: '0755'
+          loop:
+            - /opt/semaphore/config
+            - /opt/semaphore/data
+            - /opt/semaphore/postgres
+          when: semaphore_exists.stat.exists
+
+        - name: Copy Semaphore Config (from Snap volumes)
+          ansible.builtin.shell: |
+            cp -r /var/snap/docker/common/var-lib-docker/volumes/bishop_semaphore_config/_data/* /opt/semaphore/config/ || true
+          args:
+            creates: /opt/semaphore/config/config.json
+          when: semaphore_exists.stat.exists
+
+        - name: Copy Semaphore DB (from Snap volumes)
+          ansible.builtin.shell: |
+            cp -r /var/snap/docker/common/var-lib-docker/volumes/bishop_semaphore_postgres/_data/* /opt/semaphore/postgres/ || true
+          args:
+            creates: /opt/semaphore/postgres/PG_VERSION
+          when: semaphore_exists.stat.exists
+
+    - name: 🛑 SANITIZATION - Remove LXD/LXC & Snap Docker
+      block:
+        - name: Purge Docker Snap (After backup!)
+          ansible.builtin.shell: snap remove --purge docker
+          ignore_errors: true
+
+        - name: Stop and disable LXD/LXC services
           ansible.builtin.systemd:
             name: "{{ item }}"
             state: stopped

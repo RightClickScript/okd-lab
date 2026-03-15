@@ -1,0 +1,64 @@
+---
+- name: Phase 1-3b - Deploy Ansible AWX (K3s)
+  hosts: local_spark
+  become: true
+  gather_facts: false
+
+  vars:
+    # Namespace for AWX
+    awx_namespace: "awx"
+    # AWX Operator Version
+    awx_operator_version: "2.19.1"
+    # Path to the K3s kubeconfig
+    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+
+  tasks:
+    - name: 📦 HELM - Add AWX Operator Repo
+      kubernetes.core.helm_repository:
+        name: awx-operator
+        repo_url: "https://ansible-operator.github.io/awx-operator-helm/"
+
+    - name: 🚀 DEPLOY - Install AWX Operator via Helm
+      kubernetes.core.helm:
+        name: awx-operator
+        chart_ref: awx-operator/awx-operator
+        release_namespace: "{{ awx_namespace }}"
+        create_namespace: true
+        chart_version: "{{ awx_operator_version }}"
+        wait: true
+        kubeconfig: "{{ kubeconfig }}"
+
+    - name: 🔑 SECRET - Create Admin Password
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ kubeconfig }}"
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: awx-admin-password
+            namespace: "{{ awx_namespace }}"
+          stringData:
+            password: "{{ default_password }}"
+          type: Opaque
+
+    - name: 📄 MANIFEST - Deploy AWX Instance
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ kubeconfig }}"
+        definition:
+          apiVersion: awx.ansible.com/v1beta1
+          kind: AWX
+          metadata:
+            name: awx-instance
+            namespace: "{{ awx_namespace }}"
+          spec:
+            service_type: nodeport
+            nodeport_port: 30005
+            postgres_storage_class: local-path
+            admin_user: admin
+            admin_password_secret: awx-admin-password
+
+    - name: 🔗 ACCESS - Output URL
+      ansible.builtin.debug:
+        msg: "AWX will be active at http://192.168.199.5:30005 (Note: Deployment takes 5-10 minutes)"

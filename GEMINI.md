@@ -69,7 +69,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 - [x] `scripts/bootstrap.sh`: Install Git, Python, Ansible CLI.
 - [x] `playbooks/phase-1/playbook-1-host-prep.yml`: Install Docker, K3s.
 - [x] `playbooks/phase-1/playbook-2-semaphore-init.yml`: Deploy Semaphore UI.
-- [ ] `playbooks/phase-1/playbook-2b-vault-init.yml`: Deploy HashiCorp Vault on K3s.
+- [x] `playbooks/phase-1/playbook-2b-vault-init.yml`: Deploy HashiCorp Vault on K3s.
 - [ ] `playbooks/phase-1/playbook-2c-awx-init.yml`: Deploy Ansible AWX Operator on K3s.
 
 ### Phase 2: The Hypervisor Foundation (AMD Epyc & NUCs)

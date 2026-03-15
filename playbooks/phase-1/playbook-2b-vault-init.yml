@@ -1,0 +1,52 @@
+---
+- name: Phase 1-3a - Deploy HashiCorp Vault (K3s)
+  hosts: local_spark
+  become: true
+  gather_facts: false
+
+  vars:
+    # Namespace for Vault
+    vault_namespace: "vault"
+    # Vault Version
+    vault_version: "0.28.1" # Adjust if needed
+    # Path to the K3s kubeconfig on the laptop
+    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+
+  tasks:
+    - name: 🛠️ PREP - Ensure Helm is installed
+      ansible.builtin.shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: 📦 HELM - Add HashiCorp Repo
+      kubernetes.core.helm_repository:
+        name: hashicorp
+        repo_url: "https://helm.releases.hashicorp.com"
+
+    - name: 🚀 DEPLOY - Install Vault via Helm
+      kubernetes.core.helm:
+        name: vault
+        chart_ref: hashicorp/vault
+        release_namespace: "{{ vault_namespace }}"
+        create_namespace: true
+        chart_version: "{{ vault_version }}"
+        values:
+          server:
+            # Simple standalone mode for local management
+            dataStorage:
+              enabled: true
+              size: 10Gi
+            standalone:
+              enabled: true
+        wait: true
+        kubeconfig: "{{ kubeconfig }}"
+
+    - name: 🔓 STATUS - Inform user of Init required
+      ansible.builtin.debug:
+        msg: |
+          Vault is deployed but SEALED.
+          Run these commands on the laptop to initialize:
+          1. export KUBECONFIG={{ kubeconfig }}
+          2. kubectl exec -n {{ vault_namespace }} -it vault-0 -- vault operator init
+          3. Save the Unseal Keys and Root Token securely!

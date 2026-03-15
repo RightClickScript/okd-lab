@@ -10,7 +10,7 @@
     mgmt_vlan: 199
     vm_vlan: 198
     # Identify the primary interface (e.g., enp1s0, eth0)
-    physical_iface: "{{ physical_iface | default(ansible_facts.default_ipv4.interface) | default('eth0') }}"
+    # physical_iface: "{{ ansible_facts.default_ipv4.interface | default('eth0') }}"
 
   tasks:
     - name: DEBUG - Print physical_iface value

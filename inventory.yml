@@ -13,6 +13,10 @@ all:
       ansible_host: 192.168.199.5
       physical_iface: enp0s25
       ansible_python_interpreter: "/home/bishop/source/okd-lab/.venv/bin/python3"
+      semaphore_port: 3000
+      vault_ui_port: 30002
+      vault_api_port: 30001
+      awx_port: 30005
     amd_epyc:
       ansible_host: 192.168.199.4
       mac: "5e:dc:07:8f:3e:01"

@@ -12,6 +12,17 @@
     mgmt_ip: "192.168.199.5"
 
   tasks:
+    - name: 🧹 CLEAN - Ensure Postgres Data Compatibility
+      ansible.builtin.shell: |
+        if [ -f "{{ semaphore_root }}/postgres/PG_VERSION" ]; then
+          VERSION=$(cat {{ semaphore_root }}/postgres/PG_VERSION)
+          if [ "$VERSION" != "14" ]; then
+            echo "Incompatible Postgres version $VERSION detected. Wiping and attempting re-sync..."
+            rm -rf {{ semaphore_root }}/postgres/*
+          fi
+        fi
+      become: true
+
     - name: 🚀 DEPLOY - Semaphore & Postgres Containers
       community.docker.docker_compose_v2:
         project_name: bishop_semaphore

@@ -7,8 +7,8 @@
   vars:
     # We will use the original data we migrated to /opt/semaphore
     semaphore_root: "/opt/semaphore"
-    semaphore_image: "semaphoreui/semaphore:latest" # Adjust version if needed based on original
-    postgres_image: "postgres" # Adjust version if needed based on original
+    semaphore_image: "semaphoreui/semaphore:latest"
+    postgres_image: "postgres:14"
     mgmt_ip: "192.168.199.5"
 
   tasks:

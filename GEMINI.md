@@ -44,11 +44,11 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 *   **Packages:** `python3`, `git`.
 
 ### Infrastructure Network Standard
-*   **Physical Bond:** All hosts will use `bond0` for interface consistency.
-*   **Netplan Management:** All existing `/etc/netplan/*.yaml` files will be replaced by a project-managed configuration.
-*   **VLAN Mapping:**
-    *   **VLAN 199 (192.168.199.0/24):** Physical Management (Untagged/Native or Tagged).
-    *   **VLAN 198 (192.168.198.0/24):** VM & OKD Compute (Tagged).
+*   **Physical Bond:** All hosts use `bond0` as the primary interface for consistency.
+*   **Management (Untagged):** The `mgmt_ip` is assigned directly to `bond0`.
+*   **Compute/VM (Tagged):** VLAN 198 is layered on `bond0` with `dhcp4: yes`.
+*   **Netplan Management:** All existing `/etc/netplan/*.yaml` files are replaced by a project-managed configuration.
+*   **DNS Standard:** Primary DNS `192.168.1.1`, Search Domain `homelab.local`.
 
 
 ### Host Assignment Table

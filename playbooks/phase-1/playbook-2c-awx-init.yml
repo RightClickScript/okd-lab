@@ -46,7 +46,7 @@
             name: awx-admin-password
             namespace: "{{ awx_namespace }}"
           stringData:
-            password: "{{ default_password }}"
+            password: "{{ ansible_password }}"
           type: Opaque
 
     - name: 📄 MANIFEST - Deploy AWX Instance

@@ -25,10 +25,11 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 # 4. Install Ansible inside the Virtual Environment
-echo "[4/5] Installing Ansible and required Python packages..."
+echo "[4/5] Installing Ansible and core collections..."
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
-pip install "ansible-core>=2.15.0"
+pip install "ansible-core>=2.15.0" kubernetes PyYAML
+
 
 # 5. Install required Ansible collections
 echo "[5/5] Installing Ansible collections..."

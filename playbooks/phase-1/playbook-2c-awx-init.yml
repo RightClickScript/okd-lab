@@ -32,7 +32,7 @@
             kube-rbac-proxy:
               image: quay.io/brancz/kube-rbac-proxy:v0.15.0
         # Increase timeout for slow image pulls
-        wait: false
+        wait: true
         kubeconfig: "{{ kubeconfig }}"
 
     - name: 🔑 SECRET - Create Admin Password

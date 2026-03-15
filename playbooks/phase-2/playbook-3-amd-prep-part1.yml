@@ -7,7 +7,6 @@
   vars:
     # Standard networking vars (aligned with GEMINI.md)
     mgmt_ip: "192.168.199.4"
-    mgmt_vlan: 199
     vm_vlan: 198
     # physical_iface is now pulled from inventory.yml
 

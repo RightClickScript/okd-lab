@@ -9,111 +9,109 @@
     mgmt_ip: "192.168.199.5"
     mgmt_vlan: 199
     vm_vlan: 198
-    # Identify the primary interface (e.g., enp1s0, eth0)
-    # physical_iface: "{{ ansible_facts.default_ipv4.interface | default('eth0') }}"
 
   tasks:
     - name: DEBUG - Print physical_iface value
       ansible.builtin.debug:
         var: physical_iface
 
-    # - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
-    #   block:
-    #     - name: Gather service facts to check for LXD/LXC
-    #       ansible.builtin.service_facts:
+    - name: 🛑 SANITIZATION - Remove LXD/LXC (Snap and Apt)
+      block:
+        - name: Gather service facts to check for LXD/LXC
+          ansible.builtin.service_facts:
 
-    #     - name: Stop and disable apt-based LXD/LXC services
-    #       ansible.builtin.systemd:
-    #         name: "{{ item }}"
-    #         state: stopped
-    #         enabled: false
-    #       loop:
-    #         - lxd.service
-    #         - lxd-agent.service
-    #         - lxcfs.service
-    #       when: "item in ansible_facts.services"
+        - name: Stop and disable apt-based LXD/LXC services
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop:
+            - lxd.service
+            - lxd-agent.service
+            - lxcfs.service
+          when: "item in ansible_facts.services"
 
-    #     - name: Remove LXD snap package
-    #       community.general.snap:
-    #         name: lxd
-    #         state: absent
+        - name: Remove LXD snap package
+          community.general.snap:
+            name: lxd
+            state: absent
 
-    #     - name: Purge apt-based LXD/LXC packages
-    #       ansible.builtin.apt:
-    #         name: ["lxd", "lxd-client", "lxc", "lxcfs"]
-    #         state: absent
-    #         purge: true
+        - name: Purge apt-based LXD/LXC packages
+          ansible.builtin.apt:
+            name: ["lxd", "lxd-client", "lxc", "lxcfs"]
+            state: absent
+            purge: true
 
-    #     - name: Remove remaining LXD/LXC artifacts
-    #       ansible.builtin.file:
-    #         path: "{{ item }}"
-    #         state: absent
-    #       loop:
-    #         - /var/lib/lxd
-    #         - /var/snap/lxd
-    #         - /var/lib/lxcfs
+        - name: Remove remaining LXD/LXC artifacts
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /var/lib/lxd
+            - /var/snap/lxd
+            - /var/lib/lxcfs
 
-    #     - name: Remove LXD network bridge
-    #       ansible.builtin.shell: ip link delete lxdbr0 || true
-    #       changed_when: false
-    #       ignore_errors: true
+        - name: Remove LXD network bridge
+          ansible.builtin.shell: ip link delete lxdbr0 || true
+          changed_when: false
+          ignore_errors: true
 
-    # - name: 🌐 NETWORKING - Standardize with Netplan
-    #   block:
-    #     - name: Create backup directory for netplan
-    #       ansible.builtin.file:
-    #         path: /etc/netplan/backup
-    #         state: directory
-    #         mode: "0755"
+    - name: 🌐 NETWORKING - Standardize with Netplan
+      block:
+        - name: Create backup directory for netplan
+          ansible.builtin.file:
+            path: /etc/netplan/backup
+            state: directory
+            mode: "0755"
 
-    #     - name: Backup existing Netplan files
-    #       ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
-    #       args:
-    #         warn: false # Suppress warning about using shell for this
-    #         creates: /etc/netplan/backup/backup_done
-    #       changed_when: false
+        - name: Backup existing Netplan files
+          ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
+          args:
+            warn: false # Suppress warning about using shell for this
+            creates: /etc/netplan/backup/backup_done
+          changed_when: false
 
-    #     - name: Apply Infrastructure Netplan (bond0 + VLANs)
-    #       ansible.builtin.copy:
-    #         dest: /etc/netplan/99-morpheus-infra.yaml
-    #         mode: "0644"
-    #         content: |
-    #           network:
-    #             version: 2
-    #             ethernets:
-    #               {{ physical_iface }}:
-    #                 dhcp4: no
-    #                 dhcp6: no
-    #             bonds:
-    #               bond0:
-    #                 interfaces: [ "{{ physical_iface }}" ]
-    #                 parameters:
-    #                   mode: active-backup
-    #                 dhcp4: no
-    #                 dhcp6: no
-    #             vlans:
-    #               vlan{{ mgmt_vlan }}:
-    #                 id: {{ mgmt_vlan }}
-    #                 link: bond0
-    #                 addresses: [ "{{ mgmt_ip }}/24" ]
-    #                 routes:
-    #                   - to: default
-    #                     via: 192.168.199.254
-    #                 nameservers:
-    #                   addresses: [ 8.8.8.8, 1.1.1.1 ]
-    #               vlan{{ vm_vlan }}:
-    #                 id: {{ vm_vlan }}
-    #                 link: bond0
-    #                 dhcp4: no
-    #                 dhcp6: no
+        - name: Apply Infrastructure Netplan (bond0 + VLANs)
+          ansible.builtin.copy:
+            dest: /etc/netplan/99-morpheus-infra.yaml
+            mode: "0644"
+            content: |
+              network:
+                version: 2
+                ethernets:
+                  {{ physical_iface }}:
+                    dhcp4: no
+                    dhcp6: no
+                bonds:
+                  bond0:
+                    interfaces: [ "{{ physical_iface }}" ]
+                    parameters:
+                      mode: active-backup
+                    dhcp4: no
+                    dhcp6: no
+                vlans:
+                  vlan{{ mgmt_vlan }}:
+                    id: {{ mgmt_vlan }}
+                    link: bond0
+                    addresses: [ "{{ mgmt_ip }}/24" ]
+                    routes:
+                      - to: default
+                        via: 192.168.199.254
+                    nameservers:
+                      addresses: [ 8.8.8.8, 1.1.1.1 ]
+                  vlan{{ vm_vlan }}:
+                    id: {{ vm_vlan }}
+                    link: bond0
+                    dhcp4: no
+                    dhcp6: no
 
-    #     - name: Apply netplan configuration
-    #       ansible.builtin.command: netplan apply
+        - name: Apply netplan configuration
+          ansible.builtin.command: netplan apply
 
-    #     - name: Wait for host to become reachable again after network changes
-    #       ansible.builtin.wait_for_connection:
-    #         delay: 10
-    #         timeout: 300
+        - name: Wait for host to become reachable again after network changes
+          ansible.builtin.wait_for_connection:
+            delay: 10
+            timeout: 300
 
     # - name: 📦 SOFTWARE - Install Docker & K3s
     #   block:

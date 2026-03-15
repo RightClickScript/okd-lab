@@ -25,14 +25,14 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 # 4. Install Ansible inside the Virtual Environment
-echo "[4/5] Installing Ansible and core collections..."
+echo "[4/5] Installing Ansible and required Python packages..."
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 pip install "ansible-core>=2.15.0"
 
 # 5. Install required Ansible collections
 echo "[5/5] Installing Ansible collections..."
-ansible-galaxy collection install community.general ansible.posix
+ansible-galaxy collection install -r requirements.yml
 
 echo "---------------------------------------"
 echo "Bootstrap Complete!"

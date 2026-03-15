@@ -67,7 +67,6 @@
         - name: Backup existing Netplan files
           ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
           args:
-            warn: false # Suppress warning about using shell for this
             creates: /etc/netplan/backup/backup_done
           changed_when: false
 

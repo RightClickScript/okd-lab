@@ -68,6 +68,35 @@
             state: directory
             mode: '0755'
 
+        - name: Generate Ignition JSON for each NUC
+          ansible.builtin.copy:
+            dest: "/opt/ignition/{{ item }}.json"
+            content: |
+              {
+                "ignition": { "version": "3.4.0" },
+                "passwd": {
+                  "users": [
+                    {
+                      "name": "bishop",
+                      "ssh_authorized_keys": [
+                        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICE/gfhVZhFyejbJOq7aCuI47U9RT+CRWSkJIB068c3m bishop@P16S"
+                      ],
+                      "groups": ["sudo", "wheel"]
+                    }
+                  ]
+                },
+                "storage": {
+                  "files": [
+                    {
+                      "path": "/etc/hostname",
+                      "mode": 420,
+                      "contents": { "source": "data:,{{ item }}" }
+                    }
+                  ]
+                }
+              }
+          loop: "{{ groups['compute_plane'] }}"
+
         - name: Start Nginx Container to serve Ignition files
           community.docker.docker_container:
             name: ignition-server

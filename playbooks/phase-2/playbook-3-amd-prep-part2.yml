@@ -57,6 +57,19 @@
             state: active
             autostart: true
 
+    - name: 🌐 NETWORKING - Create br0 Bridge for VMs
+      ansible.builtin.shell: |
+        virsh net-define /dev/stdin <<EOF
+        <network>
+          <name>br0</name>
+          <forward mode='bridge'/>
+          <bridge name='bond0'/>
+        </network>
+        EOF
+        virsh net-start br0 || true
+        virsh net-autostart br0 || true
+      ignore_errors: true
+
     - name: 🌐 NETWORKING - Verify Libvirt Bridge
       ansible.builtin.shell: |
         virsh net-list --all

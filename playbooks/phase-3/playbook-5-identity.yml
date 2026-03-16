@@ -1,9 +1,78 @@
 ---
-# playbook-5-identity.yml - MS AD/DNS VM.
-# To be implemented by Coder.
-- name: Identity VM
-  hosts: amd_epyc
+- name: Phase 3-1 - Deploy MS AD/DNS (Identity)
+  hosts: management_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    # ISO Details
+    iso_url: "https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US"
+    iso_path: "/var/lib/libvirt/images/WinServer2022.iso"
+    # VM Details
+    vm_name: "identity-01"
+    vm_ram_mb: 4096
+    vm_vcpus: 2
+    vm_disk_gb: 40
+    # Network Details
+    # We will use the bridge br0 that libvirt will manage or we will link to vlan199
+    mgmt_bridge: "br0" 
+
   tasks:
-    - name: Placeholder
-      debug:
-        msg: "Scaffolded playbook"
+    - name: 📦 PREREQ - Download Windows Server ISO (Idempotent)
+      ansible.builtin.get_url:
+        url: "{{ iso_url }}"
+        dest: "{{ iso_path }}"
+        mode: "0644"
+        force: false # Only download if not present
+
+    - name: 💿 DISK - Create QCOW2 Disk for Identity VM
+      ansible.builtin.shell: |
+        qemu-img create -f qcow2 /var/lib/libvirt/images/{{ vm_name }}.qcow2 {{ vm_disk_gb }}G
+      args:
+        creates: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
+
+    - name: 🏗️ VM - Define Windows Server Identity VM
+      community.libvirt.virt:
+        command: define
+        xml: |
+          <domain type='kvm'>
+            <name>{{ vm_name }}</name>
+            <memory unit='MiB'>{{ vm_ram_mb }}</memory>
+            <vcpu placement='static'>{{ vm_vcpus }}</vcpu>
+            <os>
+              <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
+              <boot dev='cdrom'/>
+              <boot dev='hd'/>
+            </os>
+            <cpu mode='host-passthrough'/>
+            <devices>
+              <disk type='file' device='disk'>
+                <driver name='qemu' type='qcow2'/>
+                <source file='/var/lib/libvirt/images/{{ vm_name }}.qcow2'/>
+                <target dev='vda' bus='virtio'/>
+              </disk>
+              <disk type='file' device='cdrom'>
+                <driver name='qemu' type='raw'/>
+                <source file='{{ iso_path }}'/>
+                <target dev='sda' bus='sata'/>
+                <readonly/>
+              </disk>
+              <interface type='bridge'>
+                <source bridge='{{ mgmt_bridge }}'/>
+                <model type='virtio'/>
+              </interface>
+              <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+              <video>
+                <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+              </video>
+            </devices>
+          </domain>
+
+    - name: 🚀 POWER - Start Identity VM
+      community.libvirt.virt:
+        name: "{{ vm_name }}"
+        state: running
+
+    - name: 🔓 STATUS - Ready for Windows Install
+      ansible.builtin.debug:
+        msg: "Identity VM '{{ vm_name }}' is now running. Connect via VNC to begin the installation."

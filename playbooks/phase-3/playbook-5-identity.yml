@@ -5,74 +5,64 @@
   gather_facts: false
 
   vars:
-    # ISO Details
-    iso_url: "https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US"
-    iso_path: "/var/lib/libvirt/images/WinServer2022.iso"
-    # VM Details
+    # Local paths on AMD Epyc
+    iso_root: "/var/lib/libvirt/images"
+    win_iso: "{{ iso_root }}/WinServer2022.iso"
+    virtio_iso: "{{ iso_root }}/virtio-win.iso"
+    unattended_iso: "{{ iso_root }}/unattended.iso"
     vm_name: "identity-01"
-    vm_ram_mb: 4096
-    vm_vcpus: 2
-    vm_disk_gb: 40
-    # Network Details
-    # We will use the bridge br0 that libvirt will manage or we will link to vlan199
-    mgmt_bridge: "br0" 
-
+    
   tasks:
-    - name: 📦 PREREQ - Download Windows Server ISO (Idempotent)
+    - name: 📦 PREREQ - Download VirtIO Drivers (Idempotent)
       ansible.builtin.get_url:
-        url: "{{ iso_url }}"
-        dest: "{{ iso_path }}"
+        url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso"
+        dest: "{{ virtio_iso }}"
         mode: "0644"
-        force: false # Only download if not present
+        force: false
 
-    - name: 💿 DISK - Create QCOW2 Disk for Identity VM
+    - name: 📄 TEMPLATE - Render Autounattend XML
+      ansible.builtin.template:
+        src: "../../templates/windows/autounattend.xml.j2"
+        dest: "/tmp/autounattend.xml"
+      delegate_to: localhost
+      become: false
+
+    - name: 💿 ISO - Create Unattended ISO
       ansible.builtin.shell: |
-        qemu-img create -f qcow2 /var/lib/libvirt/images/{{ vm_name }}.qcow2 {{ vm_disk_gb }}G
+        genisoimage -output {{ unattended_iso }} -volid "unattended" -joliet -rock /tmp/autounattend.xml
+      delegate_to: localhost
+      become: false
+
+    - name: 📤 UPLOAD - Transfer Unattended ISO to AMD Epyc
+      ansible.builtin.copy:
+        src: "{{ unattended_iso }}"
+        dest: "{{ unattended_iso }}"
+      # Note: This assumes the paths are the same or handled via inventory
+
+    - name: 💿 DISK - Create QCOW2 Disk
+      ansible.builtin.shell: |
+        qemu-img create -f qcow2 {{ iso_root }}/{{ vm_name }}.qcow2 {{ dcdetails.BootDiskSize }}G
       args:
-        creates: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
+        creates: "{{ iso_root }}/{{ vm_name }}.qcow2"
 
-    - name: 🏗️ VM - Define Windows Server Identity VM
-      community.libvirt.virt:
-        command: define
-        xml: |
-          <domain type='kvm'>
-            <name>{{ vm_name }}</name>
-            <memory unit='MiB'>{{ vm_ram_mb }}</memory>
-            <vcpu placement='static'>{{ vm_vcpus }}</vcpu>
-            <os>
-              <type arch='x86_64' machine='pc-q35-6.2'>hvm</type>
-              <boot dev='cdrom'/>
-              <boot dev='hd'/>
-            </os>
-            <cpu mode='host-passthrough'/>
-            <devices>
-              <disk type='file' device='disk'>
-                <driver name='qemu' type='qcow2'/>
-                <source file='/var/lib/libvirt/images/{{ vm_name }}.qcow2'/>
-                <target dev='vda' bus='virtio'/>
-              </disk>
-              <disk type='file' device='cdrom'>
-                <driver name='qemu' type='raw'/>
-                <source file='{{ iso_path }}'/>
-                <target dev='sda' bus='sata'/>
-                <readonly/>
-              </disk>
-              <interface type='bridge'>
-                <source bridge='{{ mgmt_bridge }}'/>
-                <model type='virtio'/>
-              </interface>
-              <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
-              <video>
-                <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
-              </video>
-            </devices>
-          </domain>
+    - name: 🏗️ VM - Define and Start Identity VM
+      ansible.builtin.shell: |
+        virt-install \
+          --name {{ vm_name }} \
+          --ram {{ dcdetails.Memory }} \
+          --vcpus {{ dcdetails.CPU }} \
+          --os-variant win2k22 \
+          --disk path={{ iso_root }}/{{ vm_name }}.qcow2,bus=virtio \
+          --disk path={{ win_iso }},device=cdrom \
+          --disk path={{ virtio_iso }},device=cdrom \
+          --disk path={{ unattended_iso }},device=cdrom \
+          --network bridge=br0,model=virtio \
+          --graphics vnc,listen=0.0.0.0 \
+          --noautoconsole \
+          --boot hd,cdrom
+      args:
+        creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 
-    - name: 🚀 POWER - Start Identity VM
-      community.libvirt.virt:
-        name: "{{ vm_name }}"
-        state: running
-
-    - name: 🔓 STATUS - Ready for Windows Install
+    - name: 🔓 STATUS - Deployment Started
       ansible.builtin.debug:
-        msg: "Identity VM '{{ vm_name }}' is now running. Connect via VNC to begin the installation."
+        msg: "Identity VM '{{ vm_name }}' is installing. It will be reachable at {{ dcdetails.IPAddress }} via WinRM shortly."

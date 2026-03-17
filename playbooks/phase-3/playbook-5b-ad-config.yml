@@ -8,6 +8,7 @@
       ansible.windows.win_feature:
         name:
           - AD-Domain-Services
+          - RSAT-AD-PowerShell
           - DNS
           - DHCP
         include_management_tools: true
@@ -15,7 +16,7 @@
         state: present
 
     - name: 🌐 DOMAIN - Create Forest and Domain
-      ansible.windows.win_domain:
+      microsoft.ad.domain:
         dns_domain_name: "{{ ad.domain_FQDN }}"
         domain_mode: "{{ ad.mode }}"
         domain_netbios_name: "{{ ad.domain_NetBIOS }}"
@@ -29,13 +30,13 @@
       when: domain_promotion.changed
 
     - name: 📁 STRUCTURE - Create Lab OU
-      community.windows.win_domain_ou:
+      microsoft.ad.ou:
         name: "Lab"
         state: present
         protected: false
 
     - name: 👥 GROUPS - Create Lab Groups
-      community.windows.win_domain_group:
+      microsoft.ad.group:
         name: "{{ item }}"
         scope: universal
         path: "OU=Lab,DC={{ ad.domain_NetBIOS }},DC=local"
@@ -44,7 +45,7 @@
         - "LabUsers"
 
     - name: 👤 USERS - Create Morpheus and Lab Service Accounts
-      community.windows.win_domain_user:
+      microsoft.ad.user:
         name: "{{ item.name }}"
         firstname: "{{ item.firstname }}"
         surname: "{{ item.surname }}"

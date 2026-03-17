@@ -5,3 +5,5 @@ collections:
   - name: community.libvirt
   - name: kubernetes.core
   - name: ansible.windows
+  - name: microsoft.ad
+  - name: community.windows

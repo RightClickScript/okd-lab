@@ -2,7 +2,7 @@ all:
   vars:
     ansible_user: "bishop"
     ansible_password: "Admin@12345"
-    ansible_become_password: "{{ ansible_password }}"
+    ansible_become_password: "Admin@12345"
     ansible_python_interpreter: "/usr/bin/python3.12"
     ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new -o StrictHostKeyChecking=no"
 
@@ -14,7 +14,7 @@ all:
       upstream_dns_1: "8.8.8.8"
       upstream_dns_2: "8.8.4.4"
       reverse_dns_zone: "192.168.199.0/24"
-    
+
     dcdetails:
       name: "identity-01"
       IPAddress: "192.168.199.10"
@@ -68,7 +68,7 @@ all:
         identity_01:
       vars:
         ansible_user: "administrator"
-        ansible_password: "{{ ansible_password }}"
+        # ansible_password: "{{ ansible_password }}"
         ansible_connection: "winrm"
         ansible_winrm_transport: "basic"
         ansible_winrm_server_cert_validation: "ignore"

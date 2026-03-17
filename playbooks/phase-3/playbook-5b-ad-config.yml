@@ -63,7 +63,7 @@
 
     - name: 🔗 DNS - Configure Forwarders
       community.windows.win_dns_forwarder:
-        forwarders:
+        address:
           - "{{ ad.upstream_dns_1 }}"
           - "{{ ad.upstream_dns_2 }}"
         state: present

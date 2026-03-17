@@ -84,13 +84,14 @@
           --vcpus {{ dcdetails.CPU }} \
           --os-variant win2k22 \
           --disk path={{ iso_root }}/{{ vm_name }}.qcow2,bus=virtio \
-          --cdrom {{ win_iso }} \
+          --disk path={{ win_iso }},device=cdrom,bus=sata,readonly=on \
           --disk path={{ virtio_iso }},device=cdrom,bus=sata,readonly=on \
           --disk path={{ unattended_iso }},device=cdrom,bus=sata,readonly=on \
-          --network bridge=br0,model=virtio \
+          --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --boot cdrom,hd
+          --boot cdrom,hd \
+          --import
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 

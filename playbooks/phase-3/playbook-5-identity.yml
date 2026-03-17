@@ -16,6 +16,14 @@
     vm_name: "identity-01"
     
   tasks:
+    - name: 📦 PREREQ - Download Windows Server ISO (Idempotent)
+      ansible.builtin.get_url:
+        url: "{{ iso_url }}"
+        dest: "{{ win_iso }}"
+        mode: "0644"
+        force: false
+        timeout: 1800 # 30 minute timeout for 5GB+ file
+
     - name: 📦 PREREQ - Download VirtIO Drivers (Idempotent)
       ansible.builtin.get_url:
         url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso"

@@ -42,6 +42,16 @@
         dest: "{{ unattended_iso }}"
         mode: "0644"
 
+    - name: 🔍 CHECK - Verify Windows ISO exists
+      ansible.builtin.stat:
+        path: "{{ win_iso }}"
+      register: win_iso_stat
+
+    - name: 🛑 FAIL - If Windows ISO is missing
+      ansible.builtin.fail:
+        msg: "The Windows ISO is missing at {{ win_iso }}. Please download it first!"
+      when: not win_iso_stat.stat.exists
+
     - name: 💿 DISK - Create QCOW2 Disk
       ansible.builtin.shell: |
         qemu-img create -f qcow2 {{ iso_root }}/{{ vm_name }}.qcow2 {{ dcdetails.BootDiskSize }}G
@@ -56,9 +66,9 @@
           --vcpus {{ dcdetails.CPU }} \
           --os-variant win2k22 \
           --disk path={{ iso_root }}/{{ vm_name }}.qcow2,bus=virtio \
-          --disk path={{ win_iso }},device=cdrom,bus=sata \
-          --disk path={{ virtio_iso }},device=cdrom,bus=sata \
-          --disk path={{ unattended_iso }},device=cdrom,bus=sata \
+          --disk path={{ win_iso }},device=cdrom,bus=sata,readonly=on \
+          --disk path={{ virtio_iso }},device=cdrom,bus=sata,readonly=on \
+          --disk path={{ unattended_iso }},device=cdrom,bus=sata,readonly=on \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \

@@ -5,7 +5,10 @@
   gather_facts: false
 
   vars:
-    # Local paths on AMD Epyc
+    # Local paths on Laptop
+    local_unattended_xml: "/tmp/autounattend.xml"
+    local_unattended_iso: "/tmp/unattended.iso"
+    # Remote paths on AMD Epyc
     iso_root: "/var/lib/libvirt/images"
     win_iso: "{{ iso_root }}/WinServer2022.iso"
     virtio_iso: "{{ iso_root }}/virtio-win.iso"
@@ -23,21 +26,21 @@
     - name: 📄 TEMPLATE - Render Autounattend XML
       ansible.builtin.template:
         src: "../../templates/windows/autounattend.xml.j2"
-        dest: "/tmp/autounattend.xml"
+        dest: "{{ local_unattended_xml }}"
       delegate_to: localhost
       become: false
 
-    - name: 💿 ISO - Create Unattended ISO
+    - name: 💿 ISO - Create Unattended ISO (on Laptop)
       ansible.builtin.shell: |
-        genisoimage -output {{ unattended_iso }} -volid "unattended" -joliet -rock /tmp/autounattend.xml
+        genisoimage -output {{ local_unattended_iso }} -volid "unattended" -joliet -rock {{ local_unattended_xml }}
       delegate_to: localhost
       become: false
 
     - name: 📤 UPLOAD - Transfer Unattended ISO to AMD Epyc
       ansible.builtin.copy:
-        src: "{{ unattended_iso }}"
+        src: "{{ local_unattended_iso }}"
         dest: "{{ unattended_iso }}"
-      # Note: This assumes the paths are the same or handled via inventory
+        mode: "0644"
 
     - name: 💿 DISK - Create QCOW2 Disk
       ansible.builtin.shell: |
@@ -53,13 +56,13 @@
           --vcpus {{ dcdetails.CPU }} \
           --os-variant win2k22 \
           --disk path={{ iso_root }}/{{ vm_name }}.qcow2,bus=virtio \
-          --disk path={{ win_iso }},device=cdrom \
-          --disk path={{ virtio_iso }},device=cdrom \
-          --disk path={{ unattended_iso }},device=cdrom \
+          --disk path={{ win_iso }},device=cdrom,bus=sata \
+          --disk path={{ virtio_iso }},device=cdrom,bus=sata \
+          --disk path={{ unattended_iso }},device=cdrom,bus=sata \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --boot hd,cdrom
+          --boot cdrom,hd
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 

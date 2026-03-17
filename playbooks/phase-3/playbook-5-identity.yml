@@ -5,6 +5,8 @@
   gather_facts: false
 
   vars:
+    # ISO Details
+    iso_url: "https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US"
     # Local paths on Laptop
     local_unattended_xml: "/tmp/autounattend.xml"
     local_unattended_iso: "/tmp/unattended.iso"

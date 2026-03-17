@@ -16,7 +16,7 @@
     virtio_iso: "{{ iso_root }}/virtio-win.iso"
     unattended_iso: "{{ iso_root }}/unattended.iso"
     vm_name: "identity-01"
-    
+
   tasks:
     - name: 📦 PREREQ - Download Windows Server ISO (Idempotent)
       ansible.builtin.get_url:
@@ -40,7 +40,14 @@
       delegate_to: localhost
       become: false
 
-    - name: 💿 ISO - Create Unattended ISO (on Laptop)
+    - name: 🗑️ CLEANUP - Remove old Unattended ISO
+      ansible.builtin.file:
+        path: "{{ local_unattended_iso }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+
+    - name: � ISO - Create Unattended ISO (on Laptop)
       ansible.builtin.shell: |
         genisoimage -output {{ local_unattended_iso }} -volid "unattended" -joliet -rock {{ local_unattended_xml }}
       delegate_to: localhost
@@ -51,6 +58,7 @@
         src: "{{ local_unattended_iso }}"
         dest: "{{ unattended_iso }}"
         mode: "0644"
+        force: true
 
     - name: 🔍 CHECK - Verify Windows ISO exists
       ansible.builtin.stat:

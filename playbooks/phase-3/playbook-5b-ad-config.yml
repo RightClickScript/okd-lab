@@ -56,14 +56,35 @@
         groups:
           - "{{ item.group }}"
       loop:
-        - { name: "morpheus_adm", firstname: "Morpheus", surname: "Admin", group: "LabAdmins" }
-        - { name: "okd_admin", firstname: "OKD", surname: "Admin", group: "LabAdmins" }
-        - { name: "awx_admin", firstname: "AWX", surname: "Admin", group: "LabAdmins" }
-        - { name: "test_user", firstname: "Test", surname: "User", group: "LabUsers" }
+        - {
+            name: "morpheus_adm",
+            firstname: "Morpheus",
+            surname: "Admin",
+            group: "LabAdmins",
+          }
+        - {
+            name: "okd_admin",
+            firstname: "OKD",
+            surname: "Admin",
+            group: "LabAdmins",
+          }
+        - {
+            name: "awx_admin",
+            firstname: "AWX",
+            surname: "Admin",
+            group: "LabAdmins",
+          }
+        - {
+            name: "test_user",
+            firstname: "Test",
+            surname: "User",
+            group: "LabUsers",
+          }
 
     - name: 🔗 DNS - Configure Forwarders
-      community.windows.win_dns_forwarder:
-        address:
+      ansible.windows.win_dns_client:
+        adapter_names: "*"
+        ipv4_addresses:
           - "{{ ad.upstream_dns_1 }}"
           - "{{ ad.upstream_dns_2 }}"
         state: present

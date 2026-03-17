@@ -33,7 +33,7 @@
       microsoft.ad.ou:
         name: "Lab"
         state: present
-        protected: false
+        protected_from_deletion: false
 
     - name: 👥 GROUPS - Create Lab Groups
       microsoft.ad.group:

@@ -28,7 +28,7 @@ fi
 echo "[4/5] Installing Ansible and core collections..."
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
-pip install "ansible-core>=2.15.0" kubernetes PyYAML
+pip install "ansible-core>=2.15.0" kubernetes PyYAML pywinrm requests
 
 
 # 5. Install required Ansible collections

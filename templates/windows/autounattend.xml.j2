@@ -231,7 +231,13 @@
                 <SynchronousCommand wcm:action="add">
                     <Order>17</Order>
                     <CommandLine>powershell -Command "New-ItemProperty HKLM:\SOFTWARE\Build -Name Stage -PropertyType String -Value Start"</CommandLine>
-                    <Description>Build</Description>
+                    <Description>Build Start</Description>
+                    <RequiresUserInput>true</RequiresUserInput>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>18</Order>
+                    <CommandLine>powershell -Command "Set-ItemProperty HKLM:\SOFTWARE\Build -Name Stage -Value Complete"</CommandLine>
+                    <Description>Build Complete</Description>
                     <RequiresUserInput>true</RequiresUserInput>
                 </SynchronousCommand>
             </FirstLogonCommands>

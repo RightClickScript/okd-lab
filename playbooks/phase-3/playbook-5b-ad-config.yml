@@ -4,6 +4,20 @@
   gather_facts: false
 
   tasks:
+    - name: ⏳ WAIT - Wait for WinRM to become available
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: 🔍 CHECK - Wait for Windows Installation to complete
+      ansible.windows.win_reg_stat:
+        path: HKLM:\SOFTWARE\Build
+        name: Stage
+      register: build_status
+      until: build_status.value == "Complete"
+      retries: 30
+      delay: 20
+
     - name: 🏗️ ROLES - Install AD and DNS Features
       ansible.windows.win_feature:
         name:

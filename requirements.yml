@@ -1,7 +1,7 @@
-- name: community.general
-- name: ansible.posix
-- name: community.docker # Required for geerlingguy.docker role
-- name: ansible.windows
-- name: kubernetes.core
-- name: community.windows
-- name: community.libvirt
+collections:
+  - name: community.general
+  - name: ansible.posix
+  - name: community.docker # Required for geerlingguy.docker role
+  - name: community.libvirt
+  - name: kubernetes.core
+  - name: ansible.windows

@@ -54,7 +54,8 @@
         state: present
         path: "OU=Lab,DC={{ ad.domain_NetBIOS }},DC=local"
         groups:
-          - "{{ item.group }}"
+          set:
+            - "{{ item.group }}"
       loop:
         - {
             name: "morpheus_adm",

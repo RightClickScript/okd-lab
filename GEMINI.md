@@ -84,3 +84,8 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 ### Phase 4: The Kubernetes Compute Plane
 - [ ] `playbooks/phase-4/playbook-8-okd-masters.yml`: OKD Control Plane VMs (AMD Epyc).
 - [ ] `playbooks/phase-4/playbook-9-okd-workers.yml`: OKD Bare-metal Workers (NUCs).
+
+## 🚀 Post-Completion Enhancements
+- [ ] **Host-to-VM Connectivity Fix:** Transition from Macvtap to standard Linux Bridges (`br0`) on AMD Epyc to allow host-to-vm communication.
+- [ ] **Vault Auto-Unseal:** Automate the unsealing process for the HashiCorp Vault on the Container Host.
+- [ ] **Netplan Centralization:** Consolidate all host networking into a single Ansible role with dynamic templates.

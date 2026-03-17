@@ -49,6 +49,8 @@ all:
       ansible_host: 192.168.199.3
       mac: "9e:cb:b7:23:f4:38"
       physical_iface: eno1
+    identity_01:
+      ansible_host: 192.168.199.10
   children:
     local_spark:
       hosts:
@@ -61,3 +63,13 @@ all:
         nuc_1:
         nuc_2:
         nuc_3:
+    windows:
+      hosts:
+        identity_01:
+      vars:
+        ansible_user: "administrator"
+        ansible_password: "{{ ansible_password }}"
+        ansible_connection: "winrm"
+        ansible_winrm_transport: "basic"
+        ansible_winrm_server_cert_validation: "ignore"
+        ansible_port: 5985

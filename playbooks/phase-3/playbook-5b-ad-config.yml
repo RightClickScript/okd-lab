@@ -1,0 +1,72 @@
+---
+- name: Phase 3-1b - Configure Active Directory & DNS
+  hosts: windows
+  gather_facts: false
+
+  tasks:
+    - name: 🏗️ ROLES - Install AD and DNS Features
+      ansible.windows.win_feature:
+        name:
+          - AD-Domain-Services
+          - DNS
+          - DHCP
+        include_management_tools: true
+        include_sub_features: true
+        state: present
+
+    - name: 🌐 DOMAIN - Create Forest and Domain
+      ansible.windows.win_domain:
+        dns_domain_name: "{{ ad.domain_FQDN }}"
+        domain_mode: "{{ ad.mode }}"
+        domain_netbios_name: "{{ ad.domain_NetBIOS }}"
+        forest_mode: "{{ ad.mode }}"
+        safe_mode_password: "{{ ansible_password }}"
+      register: domain_promotion
+
+    - name: 🔄 REBOOT - Restart after Domain Creation
+      ansible.windows.win_reboot:
+        msg: "Domain created. Rebooting to finalize promotion..."
+      when: domain_promotion.changed
+
+    - name: 📁 STRUCTURE - Create Lab OU
+      community.windows.win_domain_ou:
+        name: "Lab"
+        state: present
+        protected: false
+
+    - name: 👥 GROUPS - Create Lab Groups
+      community.windows.win_domain_group:
+        name: "{{ item }}"
+        scope: universal
+        path: "OU=Lab,DC={{ ad.domain_NetBIOS }},DC=local"
+      loop:
+        - "LabAdmins"
+        - "LabUsers"
+
+    - name: 👤 USERS - Create Morpheus and Lab Service Accounts
+      community.windows.win_domain_user:
+        name: "{{ item.name }}"
+        firstname: "{{ item.firstname }}"
+        surname: "{{ item.surname }}"
+        password: "{{ ansible_password }}"
+        password_never_expires: true
+        state: present
+        path: "OU=Lab,DC={{ ad.domain_NetBIOS }},DC=local"
+        groups:
+          - "{{ item.group }}"
+      loop:
+        - { name: "morpheus_adm", firstname: "Morpheus", surname: "Admin", group: "LabAdmins" }
+        - { name: "okd_admin", firstname: "OKD", surname: "Admin", group: "LabAdmins" }
+        - { name: "awx_admin", firstname: "AWX", surname: "Admin", group: "LabAdmins" }
+        - { name: "test_user", firstname: "Test", surname: "User", group: "LabUsers" }
+
+    - name: 🔗 DNS - Configure Forwarders
+      community.windows.win_dns_forwarder:
+        forwarders:
+          - "{{ ad.upstream_dns_1 }}"
+          - "{{ ad.upstream_dns_2 }}"
+        state: present
+
+    - name: 🔓 STATUS - AD is Active
+      ansible.builtin.debug:
+        msg: "Active Directory '{{ ad.domain_FQDN }}' is now fully configured and DNS is active."

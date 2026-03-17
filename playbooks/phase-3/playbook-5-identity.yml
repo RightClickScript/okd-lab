@@ -6,7 +6,7 @@
 
   vars:
     # ISO Details - Windows Server 2022 Evaluation
-    iso_url: "https://software-static.download.prss.microsoft.com/db_releases/Windows_Server_2022_Eval_Edition_ISO_English_X22-59552.iso"
+    iso_url: "https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US"
     # Local paths on Laptop
     local_unattended_xml: "/tmp/autounattend.xml"
     local_unattended_iso: "/tmp/unattended.iso"

@@ -95,11 +95,11 @@
           --vcpus {{ morpheusdetails.CPU }} \
           --os-variant ubuntu22.04 \
           --disk path={{ vm_disk }},format=qcow2,bus=virtio \
-          --disk path={{ cloud_init_iso }},device=cdrom,bus=sata,readonly=on \
+          --disk path={{ cloud_init_iso }},device=disk,bus=virtio,readonly=on \
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --boot hd,cdrom \
+          --boot hd \
           --import
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"

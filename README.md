@@ -51,6 +51,25 @@ These services are hosted on the **Container Host Laptop** (192.168.199.5).
 
 ## 🛠️ Troubleshooting
 
+### SSH Key Management (Linux to Linux)
+If you copy an SSH private key from Windows to your Linux Container Host, you may encounter the error: `Load key "/home/bishop/.ssh/linux": error in libcrypto`. This is typically caused by Windows-style line endings (CRLF).
+
+**1. Fix Line Endings:**
+Run this command on your Container Host to strip carriage returns from the key file:
+```bash
+sed -i 's/\r$//' ~/.ssh/linux
+```
+
+**2. Set Permissions:**
+Ensure the private key has the correct restricted permissions:
+```bash
+chmod 600 ~/.ssh/linux
+```
+
+**3. Infrastructure Requirement:**
+- **Public Key:** Must be added to `inventory.yml` as `ansible_ssh_public_key`. This is used by `cloud-init` to provision new VMs.
+- **Private Key:** Must exist on the **Container Host Laptop** at `~/.ssh/linux`. This is used by Ansible to manage all hosts.
+
 ### Resetting Semaphore Admin Password
 If you're unable to log in to Semaphore, you can create a new admin user inside the container:
 ```bash

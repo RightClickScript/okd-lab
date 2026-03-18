@@ -33,7 +33,7 @@
               sudo: ALL=(ALL) NOPASSWD:ALL
               shell: /bin/bash
               ssh_authorized_keys:
-                - {{ lookup('file', '~/.ssh/id_rsa.pub') }}
+                - "{{ ansible_ssh_public_key }}"
           chpasswd:
             list: |
               bishop:{{ ansible_password }}

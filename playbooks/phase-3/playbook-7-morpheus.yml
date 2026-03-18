@@ -23,40 +23,64 @@
         mode: "0644"
         force: false
 
-    - name: 📄 AUTOINSTALL - Generate user-data (On AMD Epyc)
+    - name: 📄 AUTOINSTALL - Generate user-data (Based on Packer Template)
       ansible.builtin.copy:
         dest: "{{ user_data_path }}"
         content: |
           #cloud-config
           autoinstall:
             version: 1
-            interactive-sections:
-              - none
+              early-commands:
+                # Ensures that Packer does not connect too soon.
+                - sudo systemctl stop ssh
+                - sudo systemctl disable ssh
+            locale: en_US.UTF-8
             keyboard:
               layout: us
-            locale: us
+            network:
+              network:
+                version: 2
+                ethernets:
+                  eth0:
+                    dhcp4: no
+                    addresses:
+                      - {{ morpheusdetails.IPAddress }}/24
+                    gateway4: 192.168.199.254
+                    nameservers:
+                      addresses: [192.168.199.10, 8.8.8.8]
+                    search: [{{ ad.domain_FQDN }}]
+            apt:
+              geoip: true
+              preserve_sources_list: true
+              primary:
+                - arches: [amd64, i386]
+                  uri: http://archive.ubuntu.com/ubuntu
+                - arches: [default]
+                  uri: http://ports.ubuntu.com/ubuntu-ports    
+            storage:
+              layout:
+                name: direct
             identity:
               hostname: {{ vm_name }}
-              password: "{{ ansible_password | password_hash('sha512') }}"
               username: bishop
+              password: "{{ ansible_password | password_hash('sha512') }}"
             ssh:
               install-server: true
               allow-pw: true
               authorized-keys:
                 - "{{ ansible_ssh_public_key }}"
-            networks:
-              version: 2
-              ethernets:
-                eth0:
-                  dhcp4: no
-                  addresses:
-                    - {{ morpheusdetails.IPAddress }}/24
-                  gateway4: 192.168.199.254
-                  nameservers:
-                    addresses: [192.168.199.10, 8.8.8.8]
-            storage:
-              layout:
-                name: direct
+            user-data:
+              disable_root: false
+              package_update: true
+              package_upgrade: true
+              package_reboot_if_required: true
+            late-commands:
+              - chroot /target systemctl enable ssh
+              - chroot /target systemctl start ssh
+              - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
+              - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
+            timezone: US/Eastern
+            ssh_quiet_keygen: true
 
     - name: 📄 AUTOINSTALL - Generate empty meta-data (On AMD Epyc)
       ansible.builtin.copy:

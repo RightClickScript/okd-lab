@@ -16,91 +16,99 @@
     http_root: "/opt/ignition/morpheus"
 
   tasks:
-    # - name: 📂 HTTP - Setup Directory on Container Host
-    #   ansible.builtin.file:
-    #     path: "{{ http_root }}"
-    #     state: directory
-    #     mode: "0755"
-    #   delegate_to: localhost
-    #   become: true
+    - name: 📂 HTTP - Setup Directory on Container Host
+      ansible.builtin.file:
+        path: "{{ http_root }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: true
 
-    # - name: 📄 AUTOINSTALL - Generate user-data (On Container Host)
-    #   ansible.builtin.copy:
-    #     dest: "{{ http_root }}/user-data"
-    #     content: |
-    #       #cloud-config
-    #       autoinstall:
-    #         version: 1
-    #         locale: en_US.UTF-8
-    #         keyboard:
-    #           layout: us
-    #         network:
-    #           network:
-    #             version: 2
-    #             ethernets:
-    #               enp1s0:
-    #                 dhcp4: no
-    #                 addresses:
-    #                   - {{ morpheusdetails.IPAddress }}/24
-    #                 gateway4: 192.168.199.254
-    #                 nameservers:
-    #                   addresses: [192.168.199.10, 8.8.8.8]
-    #                   search: [{{ ad.domain_FQDN }}]
-    #         identity:
-    #           hostname: {{ vm_name }}
-    #           username: bishop
-    #           password: "{{ ansible_password | password_hash('sha512') }}"
-    #         ssh:
-    #           install-server: true
-    #           allow-pw: true
-    #           authorized-keys:
-    #             - "{{ ansible_ssh_public_key }}"
-    #         storage:
-    #           layout:
-    #             name: direct
-    #         late-commands:
-    #           - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
-    #           - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
-    #           - "curtin in-target --target=/target -- reboot"
-    #         timezone: US/Eastern
-    #   delegate_to: localhost
-    #   become: true
+    - name: 📄 AUTOINSTALL - Generate user-data (On Container Host)
+      ansible.builtin.copy:
+        dest: "{{ http_root }}/user-data"
+        content: |
+          #cloud-config
+          autoinstall:
+            version: 1
+            locale: en_US.UTF-8
+            keyboard:
+              layout: us
+            network:
+              network:
+                version: 2
+                ethernets:
+                  enp1s0:
+                    dhcp4: no
+                    addresses:
+                      - {{ morpheusdetails.IPAddress }}/24
+                    gateway4: 192.168.199.254
+                    nameservers:
+                      addresses: [192.168.199.10, 8.8.8.8]
+                      search: [{{ ad.domain_FQDN }}]
+            identity:
+              hostname: {{ vm_name }}
+              username: bishop
+              password: "{{ ansible_password | password_hash('sha512') }}"
+            ssh:
+              install-server: true
+              allow-pw: true
+              authorized-keys:
+                - "{{ ansible_ssh_public_key }}"
+            storage:
+              layout:
+                name: direct
+            late-commands:
+              - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
+              - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
+            timezone: US/Eastern
+      delegate_to: localhost
+      become: true
 
-    # - name: 📄 AUTOINSTALL - Generate empty meta-data (On Container Host)
-    #   ansible.builtin.copy:
-    #     dest: "{{ http_root }}/meta-data"
-    #     content: ""
-    #   delegate_to: localhost
-    #   become: true
+    - name: 📄 AUTOINSTALL - Generate empty meta-data (On Container Host)
+      ansible.builtin.copy:
+        dest: "{{ http_root }}/meta-data"
+        content: ""
+      delegate_to: localhost
+      become: true
 
-    # - name: 📦 PREREQ - Download Ubuntu Server ISO
-    #   ansible.builtin.get_url:
-    #     url: "{{ iso_url }}"
-    #     dest: "{{ ubuntu_iso }}"
-    #     mode: "0644"
-    #     force: false
+    - name: 📦 PREREQ - Download Ubuntu Server ISO
+      ansible.builtin.get_url:
+        url: "{{ iso_url }}"
+        dest: "{{ ubuntu_iso }}"
+        mode: "0644"
+        force: false
 
-    # - name: 💿 DISK - Create QCOW2 Disk
-    #   ansible.builtin.shell: |
-    #     qemu-img create -f qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G
-    #   args:
-    #     creates: "{{ vm_disk }}"
+    - name: 💿 DISK - Create QCOW2 Disk
+      ansible.builtin.shell: |
+        qemu-img create -f qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G
+      args:
+        creates: "{{ vm_disk }}"
 
-    # - name: 🏗️ VM - Define and Start Morpheus VM (HTTP Injection)
-    #   ansible.builtin.shell: |
-    #     virt-install \
-    #       --name {{ vm_name }} \
-    #       --ram {{ morpheusdetails.Memory }} \
-    #       --vcpus {{ morpheusdetails.CPU }} \
-    #       --os-variant ubuntu22.04 \
-    #       --location {{ ubuntu_iso }},kernel=casper/vmlinuz,initrd=casper/initrd \
-    #       --disk path={{ vm_disk }},format=qcow2,bus=virtio \
-    #       --network type=direct,source=bond0,source_mode=bridge,model=virtio \
-    #       --graphics vnc,listen=0.0.0.0 \
-    #       --noautoconsole \
-    #       --extra-args "autoinstall ds=nocloud-net;s=http://{{ http_server }}/morpheus/"
-    #   args:
-    #     creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+    - name: 🏗️ VM - Define and Start Morpheus VM (HTTP Injection)
+      ansible.builtin.shell: |
+        virt-install \
+          --name {{ vm_name }} \
+          --ram {{ morpheusdetails.Memory }} \
+          --vcpus {{ morpheusdetails.CPU }} \
+          --os-variant ubuntu22.04 \
+          --location {{ ubuntu_iso }},kernel=casper/vmlinuz,initrd=casper/initrd \
+          --disk path={{ vm_disk }},format=qcow2,bus=virtio \
+          --network type=direct,source=bond0,source_mode=bridge,model=virtio \
+          --graphics vnc,listen=0.0.0.0 \
+          --noautoconsole \
+          --wait -1 \
+          --extra-args "autoinstall ds=nocloud-net;s=http://{{ http_server }}/morpheus/"
+      args:
+        creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+
+    - name: 🔄 REBOOT - Start VM after installation
+      ansible.builtin.shell: "virsh start {{ vm_name }}"
+      register: vm_start
+      failed_when: vm_start.rc != 0 and 'already active' not in vm_start.stderr
+
+    - name: ⚡ AUTOSTART - Enable VM autostart
+      ansible.builtin.shell: "virsh autostart {{ vm_name }}"
 
 - name: Phase 3-2b - Install Morpheus Appliance
   hosts: morpheus
@@ -108,9 +116,9 @@
   gather_facts: false
 
   tasks:
-    # - name: ⏳ WAIT - Wait for SSH to become available
-    #   ansible.builtin.wait_for_connection:
-    #     timeout: 1200
+    - name: ⏳ WAIT - Wait for SSH to become available
+      ansible.builtin.wait_for_connection:
+        timeout: 1200
 
     - name: 📤 UPLOAD - Transfer Morpheus Binary
       ansible.builtin.copy:

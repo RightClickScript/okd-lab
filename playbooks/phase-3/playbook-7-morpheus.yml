@@ -70,7 +70,7 @@
     - name: 💿 CLOUD-INIT - Create cidata ISO (On Laptop)
       ansible.builtin.shell: |
         genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso \
-          -volid cidata -joliet -rock -graft-points \
+          -volid CIDATA -joliet -rock -graft-points \
           user-data=/tmp/{{ vm_name }}-user-data \
           meta-data=/tmp/{{ vm_name }}-meta-data
       delegate_to: localhost
@@ -104,7 +104,6 @@
           --extra-args "autoinstall ds=nocloud;seedfrom=/cidata/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
-
 
 - name: Phase 3-2b - Install Morpheus Appliance
   hosts: morpheus

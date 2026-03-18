@@ -1,110 +1,84 @@
 ---
-- name: Phase 3-2a - Deploy Morpheus Appliance VM (Cloud Image)
+- name: Phase 3-2a - Deploy Morpheus Appliance VM (ISO + Injection)
   hosts: management_plane
   become: true
   gather_facts: false
 
   vars:
-    # OS Details - Ubuntu 22.04 LTS Cloud Image
-    image_url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+    # ISO Details - Ubuntu 22.04.4 Live Server
+    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
     iso_root: "/var/lib/libvirt/images"
-    base_image: "{{ iso_root }}/jammy-server-cloudimg-amd64.img"
+    ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.4-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
-    cloud_init_iso: "{{ iso_root }}/{{ vm_name }}-cloud-init.iso"
 
   tasks:
-    - name: 📦 PREREQ - Download Ubuntu Cloud Image
+    - name: 📦 PREREQ - Download Ubuntu Server ISO
       ansible.builtin.get_url:
-        url: "{{ image_url }}"
-        dest: "{{ base_image }}"
+        url: "{{ iso_url }}"
+        dest: "{{ ubuntu_iso }}"
         mode: "0644"
         force: false
 
-    - name: 📄 CLOUD-INIT - Generate user-data
+    - name: 📄 AUTOINSTALL - Generate user-data
       ansible.builtin.copy:
-        dest: "/tmp/{{ vm_name }}-user-data"
+        dest: "/tmp/user-data"
         content: |
           #cloud-config
-          hostname: {{ vm_name }}
-          manage_etc_hosts: true
-          users:
-            - name: bishop
-              sudo: ALL=(ALL) NOPASSWD:ALL
-              shell: /bin/bash
-              ssh_authorized_keys:
+          autoinstall:
+            version: 1
+            identity:
+              hostname: {{ vm_name }}
+              password: "{{ ansible_password | password_hash('sha512') }}"
+              username: bishop
+            ssh:
+              install-server: true
+              authorized-keys:
                 - "{{ ansible_ssh_public_key }}"
-          chpasswd:
-            list: |
-              bishop:{{ ansible_password }}
-            expire: False
-          runcmd:
-            - [ cloud-init-per, once, network-config, netplan, apply ]
+            networks:
+              version: 2
+              ethernets:
+                eth0:
+                  dhcp4: no
+                  addresses:
+                    - {{ morpheusdetails.IPAddress }}/24
+                  gateway4: 192.168.199.254
+                  nameservers:
+                    addresses: [192.168.199.10, 8.8.8.8]
+            storage:
+              layout:
+                name: direct
       delegate_to: localhost
       become: false
 
-    - name: 📄 CLOUD-INIT - Generate network-config
+    - name: 📄 AUTOINSTALL - Generate empty meta-data
       ansible.builtin.copy:
-        dest: "/tmp/{{ vm_name }}-network-config"
-        content: |
-          version: 2
-          ethernets:
-            eth0:
-              dhcp4: no
-              addresses:
-                - {{ morpheusdetails.IPAddress }}/24
-              gateway4: 192.168.199.254
-              nameservers:
-                addresses: [192.168.199.10, 8.8.8.8]
-                search: [{{ ad.domain_FQDN }}]
+        dest: "/tmp/meta-data"
+        content: ""
       delegate_to: localhost
       become: false
 
-    - name: 📄 CLOUD-INIT - Generate meta-data
-      ansible.builtin.copy:
-        dest: "/tmp/{{ vm_name }}-meta-data"
-        content: |
-          instance-id: {{ vm_name }}
-          local-hostname: {{ vm_name }}
-      delegate_to: localhost
-      become: false
-
-    - name: 💿 CLOUD-INIT - Create ISO (cidata)
+    - name: 💿 DISK - Create QCOW2 Disk
       ansible.builtin.shell: |
-        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso \
-          -volid cidata -joliet -rock -graft-points \
-          user-data=/tmp/{{ vm_name }}-user-data \
-          meta-data=/tmp/{{ vm_name }}-meta-data \
-          network-config=/tmp/{{ vm_name }}-network-config
-      delegate_to: localhost
-      become: false
-
-    - name: 📤 UPLOAD - Cloud-Init ISO to AMD Epyc
-      ansible.builtin.copy:
-        src: "/tmp/{{ vm_name }}-cloud-init.iso"
-        dest: "{{ cloud_init_iso }}"
-        mode: "0644"
-
-    - name: 💿 DISK - Create VM Disk from Cloud Image
-      ansible.builtin.shell: |
-        qemu-img create -f qcow2 -b {{ base_image }} -F qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G
+        qemu-img create -f qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G
       args:
         creates: "{{ vm_disk }}"
 
-    - name: 🏗️ VM - Define and Start Morpheus VM
+    - name: 🏗️ VM - Define and Start Morpheus VM (Initrd Injection)
       ansible.builtin.shell: |
         virt-install \
           --name {{ vm_name }} \
           --ram {{ morpheusdetails.Memory }} \
           --vcpus {{ morpheusdetails.CPU }} \
           --os-variant ubuntu22.04 \
+          --location {{ ubuntu_iso }},kernel=casper/vmlinuz,initrd=casper/initrd \
           --disk path={{ vm_disk }},format=qcow2,bus=virtio \
-          --disk path={{ cloud_init_iso }},device=cdrom,bus=sata,readonly=on \
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --boot cdrom,hd \
-          --import
+          --initrd-inject=/tmp/user-data \
+          --initrd-inject=/tmp/meta-data \
+          --extra-args "autoinstall ds=nocloud-net;s=/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 
@@ -116,7 +90,7 @@
   tasks:
     - name: ⏳ WAIT - Wait for SSH to become available
       ansible.builtin.wait_for_connection:
-        timeout: 600
+        timeout: 1200 # Full OS install can take some time
 
     - name: 📤 UPLOAD - Transfer Morpheus Binary
       ansible.builtin.copy:

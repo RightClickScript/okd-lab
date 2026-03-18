@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-2a - Deploy Morpheus Appliance VM (ISO + Injection)
+- name: Phase 3-2a - Deploy Morpheus Appliance VM (ISO + cidata)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -11,9 +11,7 @@
     ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.5-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
-    # Local paths on the AMD Epyc host for injection
-    user_data_path: "/tmp/{{ vm_name }}-user-data"
-    meta_data_path: "/tmp/{{ vm_name }}-meta-data"
+    cloud_init_iso: "{{ iso_root }}/{{ vm_name }}-cloud-init.iso"
 
   tasks:
     - name: 📦 PREREQ - Download Ubuntu Server ISO
@@ -23,43 +21,27 @@
         mode: "0644"
         force: false
 
-    - name: 📄 AUTOINSTALL - Generate user-data (Based on Packer Template)
+    - name: 📄 AUTOINSTALL - Generate user-data (On AMD Epyc)
       ansible.builtin.copy:
-        dest: "{{ user_data_path }}"
+        dest: "/tmp/{{ vm_name }}-user-data"
         content: |
           #cloud-config
           autoinstall:
             version: 1
-              early-commands:
-                # Ensures that Packer does not connect too soon.
-                - sudo systemctl stop ssh
-                - sudo systemctl disable ssh
             locale: en_US.UTF-8
             keyboard:
               layout: us
             network:
-              network:
-                version: 2
-                ethernets:
-                  eth0:
-                    dhcp4: no
-                    addresses:
-                      - {{ morpheusdetails.IPAddress }}/24
-                    gateway4: 192.168.199.254
-                    nameservers:
-                      addresses: [192.168.199.10, 8.8.8.8]
-                    search: [{{ ad.domain_FQDN }}]
-            apt:
-              geoip: true
-              preserve_sources_list: true
-              primary:
-                - arches: [amd64, i386]
-                  uri: http://archive.ubuntu.com/ubuntu
-                - arches: [default]
-                  uri: http://ports.ubuntu.com/ubuntu-ports    
-            storage:
-              layout:
-                name: direct
+              version: 2
+              ethernets:
+                eth0:
+                  dhcp4: no
+                  addresses:
+                    - {{ morpheusdetails.IPAddress }}/24
+                  gateway4: 192.168.199.254
+                  nameservers:
+                    addresses: [192.168.199.10, 8.8.8.8]
+                  search: [{{ ad.domain_FQDN }}]
             identity:
               hostname: {{ vm_name }}
               username: bishop
@@ -69,23 +51,36 @@
               allow-pw: true
               authorized-keys:
                 - "{{ ansible_ssh_public_key }}"
-            user-data:
-              disable_root: false
-              package_update: true
-              package_upgrade: true
-              package_reboot_if_required: true
+            storage:
+              layout:
+                name: direct
             late-commands:
-              - chroot /target systemctl enable ssh
-              - chroot /target systemctl start ssh
               - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
               - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
-            timezone: US/Eastern
-            ssh_quiet_keygen: true
+      delegate_to: localhost
+      become: false
 
-    - name: 📄 AUTOINSTALL - Generate empty meta-data (On AMD Epyc)
+    - name: 📄 AUTOINSTALL - Generate empty meta-data
       ansible.builtin.copy:
-        dest: "{{ meta_data_path }}"
+        dest: "/tmp/{{ vm_name }}-meta-data"
         content: ""
+      delegate_to: localhost
+      become: false
+
+    - name: 💿 CLOUD-INIT - Create cidata ISO (On Laptop)
+      ansible.builtin.shell: |
+        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso \
+          -volid cidata -joliet -rock -graft-points \
+          user-data=/tmp/{{ vm_name }}-user-data \
+          meta-data=/tmp/{{ vm_name }}-meta-data
+      delegate_to: localhost
+      become: false
+
+    - name: 📤 UPLOAD - Cloud-Init ISO to AMD Epyc
+      ansible.builtin.copy:
+        src: "/tmp/{{ vm_name }}-cloud-init.iso"
+        dest: "{{ cloud_init_iso }}"
+        mode: "0644"
 
     - name: 💿 DISK - Create QCOW2 Disk
       ansible.builtin.shell: |
@@ -93,7 +88,7 @@
       args:
         creates: "{{ vm_disk }}"
 
-    - name: 🏗️ VM - Define and Start Morpheus VM (Initrd Injection)
+    - name: 🏗️ VM - Define and Start Morpheus VM (ISO + cidata)
       ansible.builtin.shell: |
         virt-install \
           --name {{ vm_name }} \
@@ -102,12 +97,11 @@
           --os-variant ubuntu22.04 \
           --location {{ ubuntu_iso }},kernel=casper/vmlinuz,initrd=casper/initrd \
           --disk path={{ vm_disk }},format=qcow2,bus=virtio \
+          --disk path={{ cloud_init_iso }},device=cdrom,bus=sata \
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --initrd-inject={{ user_data_path }} \
-          --initrd-inject={{ meta_data_path }} \
-          --extra-args "autoinstall ds=nocloud-net;s=/"
+          --extra-args "autoinstall ds=nocloud;seedfrom=/cidata/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 

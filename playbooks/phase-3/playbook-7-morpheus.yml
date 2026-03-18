@@ -101,9 +101,10 @@
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --extra-args "autoinstall ds=nocloud-net;s=/cidata/"
+          --extra-args "autoinstall ds=nocloud;seedfrom=/cidata/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+
 
 - name: Phase 3-2b - Install Morpheus Appliance
   hosts: morpheus

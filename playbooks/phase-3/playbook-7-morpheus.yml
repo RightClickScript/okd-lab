@@ -55,6 +55,7 @@
               allow-pw: true
               authorized-keys:
                 - "{{ ansible_ssh_public_key }}"
+            reboot: true
             storage:
               layout:
                 name: direct
@@ -101,6 +102,14 @@
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 
 - name: Phase 3-2b - Install Morpheus Appliance
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: 🗑️ SSH - Remove old host key from known_hosts
+      ansible.builtin.command: "ssh-keygen -R {{ morpheusdetails.IPAddress }}"
+      ignore_errors: true
+
+- name: Phase 3-2c - Install Morpheus Appliance
   hosts: morpheus
   become: true
   gather_facts: false

@@ -60,9 +60,18 @@
       delegate_to: localhost
       become: false
 
+    - name: 📄 CLOUD-INIT - Generate meta-data (Empty but required)
+      ansible.builtin.copy:
+        dest: "/tmp/{{ vm_name }}-meta-data"
+        content: |
+          instance-id: {{ vm_name }}
+          local-hostname: {{ vm_name }}
+      delegate_to: localhost
+      become: false
+
     - name: 💿 CLOUD-INIT - Create ISO
       ansible.builtin.shell: |
-        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso -volid cidata -joliet -rock /tmp/{{ vm_name }}-user-data /tmp/{{ vm_name }}-network-config
+        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso -volid cidata -joliet -rock /tmp/{{ vm_name }}-user-data /tmp/{{ vm_name }}-network-config /tmp/{{ vm_name }}-meta-data
       delegate_to: localhost
       become: false
 

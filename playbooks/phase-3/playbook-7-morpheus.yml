@@ -6,7 +6,7 @@
 
   vars:
     # ISO Details - Ubuntu 22.04.4 Live Server
-    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
+    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
     iso_root: "/var/lib/libvirt/images"
     ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.4-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"

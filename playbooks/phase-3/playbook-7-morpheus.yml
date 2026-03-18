@@ -101,7 +101,7 @@
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --extra-args "autoinstall ds=nocloud;seedfrom=/cidata/"
+          --extra-args "autoinstall ds=nocloud-net;s=/dev/sr1/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 

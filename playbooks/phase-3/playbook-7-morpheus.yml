@@ -71,7 +71,11 @@
 
     - name: 💿 CLOUD-INIT - Create ISO
       ansible.builtin.shell: |
-        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso -volid cidata -joliet -rock /tmp/{{ vm_name }}-user-data /tmp/{{ vm_name }}-network-config /tmp/{{ vm_name }}-meta-data
+        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso \
+          -volid cidata -joliet -rock -graft-points \
+          user-data=/tmp/{{ vm_name }}-user-data \
+          meta-data=/tmp/{{ vm_name }}-meta-data \
+          network-config=/tmp/{{ vm_name }}-network-config
       delegate_to: localhost
       become: false
 

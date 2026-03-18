@@ -28,7 +28,7 @@ all:
       IPAddress: "192.168.199.11"
       Memory: 16384 # Morpheus requires at least 16GB
       CPU: 4
-      BootDiskSize: 100
+      BootDiskSize: 250
       binary_local_path: "/home/bishop/source/okd-lab/playbooks/artifacts/HPE_Morpheus_Enterprise_Appliance_8.0.13-2_debian_x86_64_S6E64-11136.deb"
       binary_remote_path: "/tmp/morpheus-appliance.deb"
   hosts:

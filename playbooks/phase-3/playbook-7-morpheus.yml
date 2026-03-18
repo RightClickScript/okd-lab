@@ -61,7 +61,7 @@
             late-commands:
               - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
               - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
-              - "curtin in-target --target=/target -- shutdown -r +1 'Installation complete. Rebooting in 1 minute.'"
+              - "curtin in-target --target=/target -- reboot"
             timezone: US/Eastern
       delegate_to: localhost
       become: true

@@ -5,10 +5,10 @@
   gather_facts: false
 
   vars:
-    # ISO Details - Ubuntu 22.04.4 Live Server
-    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
+    # ISO Details - Ubuntu 22.04.5 Live Server
+    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
     iso_root: "/var/lib/libvirt/images"
-    ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.4-live-server-amd64.iso"
+    ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.5-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
     # Local paths on the AMD Epyc host for injection
@@ -30,6 +30,11 @@
           #cloud-config
           autoinstall:
             version: 1
+            interactive-sections:
+              - none
+            keyboard:
+              layout: us
+            locale: en_US.UTF-8
             identity:
               hostname: {{ vm_name }}
               password: "{{ ansible_password | password_hash('sha512') }}"

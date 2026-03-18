@@ -103,6 +103,7 @@
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
+          --boot cdrom,hd \
           --import
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"

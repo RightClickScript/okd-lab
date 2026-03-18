@@ -64,6 +64,7 @@
               - "curtin in-target --target=/target -- shutdown -r +1 'Installation complete. Rebooting in 1 minute.'"
             timezone: US/Eastern
       delegate_to: localhost
+      become: true
 
     - name: 📄 AUTOINSTALL - Generate empty meta-data (On Container Host)
       ansible.builtin.copy:

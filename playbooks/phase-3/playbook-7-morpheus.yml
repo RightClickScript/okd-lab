@@ -35,16 +35,17 @@
             keyboard:
               layout: us
             network:
-              version: 2
-              ethernets:
-                eth0:
-                  dhcp4: no
-                  addresses:
-                    - {{ morpheusdetails.IPAddress }}/24
-                  gateway4: 192.168.199.254
-                  nameservers:
-                    addresses: [192.168.199.10, 8.8.8.8]
-                  search: [{{ ad.domain_FQDN }}]
+              network:
+                version: 2
+                ethernets:
+                  eth0:
+                    dhcp4: no
+                    addresses:
+                      - {{ morpheusdetails.IPAddress }}/24
+                    gateway4: 192.168.199.254
+                    nameservers:
+                      addresses: [192.168.199.10, 8.8.8.8]
+                    search: [{{ ad.domain_FQDN }}]
             identity:
               hostname: {{ vm_name }}
               username: bishop

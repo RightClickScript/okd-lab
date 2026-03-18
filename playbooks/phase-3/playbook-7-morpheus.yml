@@ -6,11 +6,14 @@
 
   vars:
     # ISO Details - Ubuntu 22.04.4 Live Server
-    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
+    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
     iso_root: "/var/lib/libvirt/images"
     ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.4-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
+    # Local paths on the AMD Epyc host for injection
+    user_data_path: "/tmp/{{ vm_name }}-user-data"
+    meta_data_path: "/tmp/{{ vm_name }}-meta-data"
 
   tasks:
     - name: 📦 PREREQ - Download Ubuntu Server ISO
@@ -20,9 +23,9 @@
         mode: "0644"
         force: false
 
-    - name: 📄 AUTOINSTALL - Generate user-data
+    - name: 📄 AUTOINSTALL - Generate user-data (On AMD Epyc)
       ansible.builtin.copy:
-        dest: "/tmp/user-data"
+        dest: "{{ user_data_path }}"
         content: |
           #cloud-config
           autoinstall:
@@ -48,15 +51,11 @@
             storage:
               layout:
                 name: direct
-      delegate_to: localhost
-      become: false
 
-    - name: 📄 AUTOINSTALL - Generate empty meta-data
+    - name: 📄 AUTOINSTALL - Generate empty meta-data (On AMD Epyc)
       ansible.builtin.copy:
-        dest: "/tmp/meta-data"
+        dest: "{{ meta_data_path }}"
         content: ""
-      delegate_to: localhost
-      become: false
 
     - name: 💿 DISK - Create QCOW2 Disk
       ansible.builtin.shell: |
@@ -76,8 +75,8 @@
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --initrd-inject=/tmp/user-data \
-          --initrd-inject=/tmp/meta-data \
+          --initrd-inject={{ user_data_path }} \
+          --initrd-inject={{ meta_data_path }} \
           --extra-args "autoinstall ds=nocloud-net;s=/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
@@ -90,7 +89,7 @@
   tasks:
     - name: ⏳ WAIT - Wait for SSH to become available
       ansible.builtin.wait_for_connection:
-        timeout: 1200 # Full OS install can take some time
+        timeout: 1200
 
     - name: 📤 UPLOAD - Transfer Morpheus Binary
       ansible.builtin.copy:

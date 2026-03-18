@@ -20,7 +20,7 @@
       ansible.builtin.file:
         path: "{{ http_root }}"
         state: directory
-        mode: "0755"
+        mode: '0755'
       delegate_to: localhost
       become: true
 
@@ -35,17 +35,16 @@
             keyboard:
               layout: us
             network:
-              network:
-                version: 2
-                ethernets:
-                  enp1s0:
-                    dhcp4: no
-                    addresses:
-                      - {{ morpheusdetails.IPAddress }}/24
-                    gateway4: 192.168.199.254
-                    nameservers:
-                      addresses: [192.168.199.10, 8.8.8.8]
-                      search: [{{ ad.domain_FQDN }}]
+              version: 2
+              ethernets:
+                eth0:
+                  dhcp4: no
+                  addresses:
+                    - {{ morpheusdetails.IPAddress }}/24
+                  gateway4: 192.168.199.254
+                  nameservers:
+                    addresses: [192.168.199.10, 8.8.8.8]
+                  search: [{{ ad.domain_FQDN }}]
             identity:
               hostname: {{ vm_name }}
               username: bishop
@@ -55,15 +54,14 @@
               allow-pw: true
               authorized-keys:
                 - "{{ ansible_ssh_public_key }}"
-            reboot: true
             storage:
               layout:
                 name: direct
             late-commands:
               - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
               - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
-      delegate_to: localhost
-      become: true
+              - "curtin in-target --target=/target -- shutdown -r +1 'Installation complete. Rebooting in 1 minute.'"
+            timezone: US/Eastern
 
     - name: 📄 AUTOINSTALL - Generate empty meta-data (On Container Host)
       ansible.builtin.copy:
@@ -102,14 +100,6 @@
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 
 - name: Phase 3-2b - Install Morpheus Appliance
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: 🗑️ SSH - Remove old host key from known_hosts
-      ansible.builtin.command: "ssh-keygen -R {{ morpheusdetails.IPAddress }}"
-      ignore_errors: true
-
-- name: Phase 3-2c - Install Morpheus Appliance
   hosts: morpheus
   become: true
   gather_facts: false

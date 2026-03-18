@@ -6,7 +6,7 @@ all:
     ansible_ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICE/gfhVZhFyejbJOq7aCuI47U9RT+CRWSkJIB068c3m bishop@P16S"
     ansible_ssh_private_key_file: "~/.ssh/linux"
     ansible_python_interpreter: "/usr/bin/python3.12"
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new -o StrictHostKeyChecking=no"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     # AD & DNS Configuration (Migrated from AD-TEST)
     ad:

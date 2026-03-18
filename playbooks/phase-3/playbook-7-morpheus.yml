@@ -1,9 +1,125 @@
 ---
-# playbook-7-morpheus.yml - Morpheus Appliance VM.
-# To be implemented by Coder.
-- name: Morpheus VM
-  hosts: amd_epyc
+- name: Phase 3-2a - Deploy Morpheus Appliance VM
+  hosts: management_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    # OS Details - Ubuntu 22.04 LTS Cloud Image
+    image_url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+    iso_root: "/var/lib/libvirt/images"
+    base_image: "{{ iso_root }}/jammy-server-cloudimg-amd64.img"
+    vm_name: "{{ morpheusdetails.name }}"
+    vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
+    cloud_init_iso: "{{ iso_root }}/{{ vm_name }}-cloud-init.iso"
+
   tasks:
-    - name: Placeholder
-      debug:
-        msg: "Scaffolded playbook"
+    - name: 📦 PREREQ - Download Ubuntu Cloud Image
+      ansible.builtin.get_url:
+        url: "{{ image_url }}"
+        dest: "{{ base_image }}"
+        mode: "0644"
+        force: false
+
+    - name: 📄 CLOUD-INIT - Generate user-data
+      ansible.builtin.copy:
+        dest: "/tmp/{{ vm_name }}-user-data"
+        content: |
+          #cloud-config
+          hostname: {{ vm_name }}
+          manage_etc_hosts: true
+          users:
+            - name: bishop
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              shell: /bin/bash
+              ssh_authorized_keys:
+                - {{ lookup('file', '~/.ssh/id_rsa.pub') }}
+          chpasswd:
+            list: |
+              bishop:{{ ansible_password }}
+            expire: False
+          runcmd:
+            - [ cloud-init-per, once, network-config, netplan, apply ]
+      delegate_to: localhost
+      become: false
+
+    - name: 📄 CLOUD-INIT - Generate network-config
+      ansible.builtin.copy:
+        dest: "/tmp/{{ vm_name }}-network-config"
+        content: |
+          version: 2
+          ethernets:
+            eth0:
+              dhcp4: no
+              addresses:
+                - {{ morpheusdetails.IPAddress }}/24
+              gateway4: 192.168.199.254
+              nameservers:
+                addresses: [192.168.199.10, 8.8.8.8]
+                search: [{{ ad.domain_FQDN }}]
+      delegate_to: localhost
+      become: false
+
+    - name: 💿 CLOUD-INIT - Create ISO
+      ansible.builtin.shell: |
+        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso -volid cidata -joliet -rock /tmp/{{ vm_name }}-user-data /tmp/{{ vm_name }}-network-config
+      delegate_to: localhost
+      become: false
+
+    - name: 📤 UPLOAD - Cloud-Init ISO to AMD Epyc
+      ansible.builtin.copy:
+        src: "/tmp/{{ vm_name }}-cloud-init.iso"
+        dest: "{{ cloud_init_iso }}"
+        mode: "0644"
+
+    - name: 💿 DISK - Create VM Disk from Cloud Image
+      ansible.builtin.shell: |
+        qemu-img create -f qcow2 -b {{ base_image }} -F qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G
+      args:
+        creates: "{{ vm_disk }}"
+
+    - name: 🏗️ VM - Define and Start Morpheus VM
+      ansible.builtin.shell: |
+        virt-install \
+          --name {{ vm_name }} \
+          --ram {{ morpheusdetails.Memory }} \
+          --vcpus {{ morpheusdetails.CPU }} \
+          --os-variant ubuntu22.04 \
+          --disk path={{ vm_disk }},format=qcow2,bus=virtio \
+          --disk path={{ cloud_init_iso }},device=cdrom \
+          --network type=direct,source=bond0,source_mode=bridge,model=virtio \
+          --graphics none \
+          --noautoconsole \
+          --import
+      args:
+        creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+
+- name: Phase 3-2b - Install Morpheus Appliance
+  hosts: morpheus
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: ⏳ WAIT - Wait for SSH to become available
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: 📤 UPLOAD - Transfer Morpheus Binary
+      ansible.builtin.copy:
+        src: "{{ morpheusdetails.binary_local_path }}"
+        dest: "{{ morpheusdetails.binary_remote_path }}"
+        mode: "0644"
+
+    - name: 🏗️ INSTALL - Install Morpheus Package
+      ansible.builtin.apt:
+        deb: "{{ morpheusdetails.binary_remote_path }}"
+        state: present
+
+    - name: ⚙️ CONFIG - Reconfigure Morpheus (Initial)
+      ansible.builtin.command: morpheus-ctl reconfigure
+      register: reconfigure_output
+      changed_when: "'reconfigure: success' in reconfigure_output.stdout"
+
+    - name: 🔓 STATUS - Morpheus is Ready
+      ansible.builtin.debug:
+        msg: "Morpheus Appliance is installed and reconfigured. Access it at https://{{ morpheusdetails.IPAddress }}"

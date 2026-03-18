@@ -21,6 +21,15 @@ all:
       Memory: 4096
       CPU: 2
       BootDiskSize: 40
+
+    morpheusdetails:
+      name: "morpheus-01"
+      IPAddress: "192.168.199.11"
+      Memory: 16384 # Morpheus requires at least 16GB
+      CPU: 4
+      BootDiskSize: 100
+      binary_local_path: "/home/bishop/downloads/HPE_Morpheus_Enterprise_Appliance_8.0.13-2_debian_x86_64_S6E64-11136"
+      binary_remote_path: "/tmp/morpheus-appliance.deb"
   hosts:
     localhost:
       ansible_connection: local
@@ -51,6 +60,8 @@ all:
       physical_iface: eno1
     identity_01:
       ansible_host: 192.168.199.10
+    morpheus_01:
+      ansible_host: 192.168.199.11
   children:
     local_spark:
       hosts:
@@ -73,3 +84,6 @@ all:
         ansible_winrm_transport: "basic"
         ansible_winrm_server_cert_validation: "ignore"
         ansible_port: 5985
+    morpheus:
+      hosts:
+        morpheus_01:

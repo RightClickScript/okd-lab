@@ -1,0 +1,15 @@
+---
+- name: Test Connectivity to Morpheus VM
+  hosts: morpheus
+  gather_facts: false
+  tasks:
+    - name: 🔍 PING - Check if host is reachable
+      ansible.builtin.ping:
+
+    - name: 📝 FACTS - Gather basic facts
+      ansible.builtin.setup:
+        filter: "ansible_interfaces"
+
+    - name: 🔓 STATUS - Connection Successful
+      ansible.builtin.debug:
+        msg: "SSH Connection to Morpheus ({{ ansible_host }}) is working! Interfaces: {{ ansible_interfaces }}"

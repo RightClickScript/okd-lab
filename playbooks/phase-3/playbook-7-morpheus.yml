@@ -34,13 +34,14 @@
               - none
             keyboard:
               layout: us
-            locale: en_US.UTF-8
+            locale: us
             identity:
               hostname: {{ vm_name }}
               password: "{{ ansible_password | password_hash('sha512') }}"
               username: bishop
             ssh:
               install-server: true
+              allow-pw: true
               authorized-keys:
                 - "{{ ansible_ssh_public_key }}"
             networks:

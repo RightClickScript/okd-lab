@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-2a - Deploy Morpheus Appliance VM (ISO + cidata)
+- name: Phase 3-2a - Deploy Morpheus Appliance VM (HTTP Injection)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -11,19 +11,22 @@
     ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.5-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
-    cloud_init_iso: "{{ iso_root }}/{{ vm_name }}-cloud-init.iso"
+    # HTTP Data Source (Container Host)
+    http_server: "192.168.199.5:8080"
+    http_root: "/opt/ignition/morpheus"
 
   tasks:
-    - name: 📦 PREREQ - Download Ubuntu Server ISO
-      ansible.builtin.get_url:
-        url: "{{ iso_url }}"
-        dest: "{{ ubuntu_iso }}"
-        mode: "0644"
-        force: false
+    - name: 📂 HTTP - Setup Directory on Container Host
+      ansible.builtin.file:
+        path: "{{ http_root }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: true
 
-    - name: 📄 AUTOINSTALL - Generate user-data (On AMD Epyc)
+    - name: 📄 AUTOINSTALL - Generate user-data (On Container Host)
       ansible.builtin.copy:
-        dest: "/tmp/{{ vm_name }}-user-data"
+        dest: "{{ http_root }}/user-data"
         content: |
           #cloud-config
           autoinstall:
@@ -58,29 +61,21 @@
               - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
               - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
       delegate_to: localhost
-      become: false
+      become: true
 
-    - name: 📄 AUTOINSTALL - Generate empty meta-data
+    - name: 📄 AUTOINSTALL - Generate empty meta-data (On Container Host)
       ansible.builtin.copy:
-        dest: "/tmp/{{ vm_name }}-meta-data"
+        dest: "{{ http_root }}/meta-data"
         content: ""
       delegate_to: localhost
-      become: false
+      become: true
 
-    - name: 💿 CLOUD-INIT - Create cidata ISO (On Laptop)
-      ansible.builtin.shell: |
-        genisoimage -output /tmp/{{ vm_name }}-cloud-init.iso \
-          -volid CIDATA -joliet -rock -graft-points \
-          user-data=/tmp/{{ vm_name }}-user-data \
-          meta-data=/tmp/{{ vm_name }}-meta-data
-      delegate_to: localhost
-      become: false
-
-    - name: 📤 UPLOAD - Cloud-Init ISO to AMD Epyc
-      ansible.builtin.copy:
-        src: "/tmp/{{ vm_name }}-cloud-init.iso"
-        dest: "{{ cloud_init_iso }}"
+    - name: 📦 PREREQ - Download Ubuntu Server ISO
+      ansible.builtin.get_url:
+        url: "{{ iso_url }}"
+        dest: "{{ ubuntu_iso }}"
         mode: "0644"
+        force: false
 
     - name: 💿 DISK - Create QCOW2 Disk
       ansible.builtin.shell: |
@@ -88,7 +83,7 @@
       args:
         creates: "{{ vm_disk }}"
 
-    - name: 🏗️ VM - Define and Start Morpheus VM (ISO + cidata)
+    - name: 🏗️ VM - Define and Start Morpheus VM (HTTP Injection)
       ansible.builtin.shell: |
         virt-install \
           --name {{ vm_name }} \
@@ -97,11 +92,10 @@
           --os-variant ubuntu22.04 \
           --location {{ ubuntu_iso }},kernel=casper/vmlinuz,initrd=casper/initrd \
           --disk path={{ vm_disk }},format=qcow2,bus=virtio \
-          --disk path={{ cloud_init_iso }},device=cdrom,bus=sata \
           --network type=direct,source=bond0,source_mode=bridge,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --extra-args "autoinstall ds=nocloud;seedfrom=/cidata/"
+          --extra-args "autoinstall ds=nocloud-net;s=http://{{ http_server }}/morpheus/"
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 

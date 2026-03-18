@@ -20,7 +20,7 @@
       ansible.builtin.file:
         path: "{{ http_root }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
       delegate_to: localhost
       become: true
 
@@ -35,16 +35,17 @@
             keyboard:
               layout: us
             network:
-              version: 2
-              ethernets:
-                eth0:
-                  dhcp4: no
-                  addresses:
-                    - {{ morpheusdetails.IPAddress }}/24
-                  gateway4: 192.168.199.254
-                  nameservers:
-                    addresses: [192.168.199.10, 8.8.8.8]
-                  search: [{{ ad.domain_FQDN }}]
+              network:
+                version: 2
+                ethernets:
+                  enp1s0:
+                    dhcp4: no
+                    addresses:
+                      - {{ morpheusdetails.IPAddress }}/24
+                    gateway4: 192.168.199.254
+                    nameservers:
+                      addresses: [192.168.199.10, 8.8.8.8]
+                      search: [{{ ad.domain_FQDN }}]
             identity:
               hostname: {{ vm_name }}
               username: bishop

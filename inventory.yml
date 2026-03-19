@@ -23,6 +23,20 @@ all:
       CPU: 2
       BootDiskSize: 40
 
+    # KVM & Management (GL.iNet IP-KVM)
+    kvm:
+      ip: "192.168.1.10"
+      user: "admin"
+      pass: "admin"
+      iso_url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/39.20240128.3.0/x86_64/fedora-coreos-39.20240128.3.0-live.x86_64.iso"
+
+    nuc_mgmt:
+      nuc_1: { port: 1 }
+      nuc_2: { port: 2 }
+      nuc_3: { port: 3 }
+      amd_epyc: { port: 4 }
+      container_host: { port: 5 }
+
     morpheusdetails:
       name: "morpheus-01"
       IPAddress: "192.168.199.11"

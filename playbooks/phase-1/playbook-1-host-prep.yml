@@ -154,9 +154,9 @@
           export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     - name: 📦 SOFTWARE - Install Docker & K3s
       block:
-        - name: Install dependencies for Docker
+        - name: Install dependencies for Docker & WOL
           ansible.builtin.apt:
-            name: [apt-transport-https, ca-certificates, curl, software-properties-common, gnupg]
+            name: [apt-transport-https, ca-certificates, curl, software-properties-common, gnupg, wakeonlan]
             state: present
 
         - name: Add Docker GPG key

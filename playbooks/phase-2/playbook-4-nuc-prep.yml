@@ -53,12 +53,11 @@
   hosts: local_spark
   become: true
   tasks:
-    - name: ⚡ WOL - Verify Wake-on-LAN capability
-      community.general.wakeonlan:
-        mac: "{{ hostvars[item]['mac'] }}"
-        broadcast: 192.168.199.255
+    - name: ⚡ WOL - Power On NUCs via Magic Packet
+      ansible.builtin.command: "wakeonlan {{ hostvars[item]['mac'] }}"
       loop: "{{ groups['compute_plane'] }}"
       when: hostvars[item]['mac'] is defined
+      changed_when: true
 
     - name: 📂 IGNITION - Setup Web Server
       block:
@@ -79,7 +78,7 @@
                     {
                       "name": "bishop",
                       "ssh_authorized_keys": [
-                        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICE/gfhVZhFyejbJOq7aCuI47U9RT+CRWSkJIB068c3m bishop@P16S"
+                        "{{ ansible_ssh_public_key }}"
                       ],
                       "groups": ["sudo", "wheel"]
                     }
@@ -90,7 +89,7 @@
                     {
                       "path": "/etc/hostname",
                       "mode": 420,
-                      "contents": { "source": "data:,{{ item }}" }
+                      "contents": { "source": "data:,{{ item | replace('_', '-') }}" }
                     }
                   ]
                 }
@@ -111,3 +110,67 @@
     - name: 🔓 STATUS - Ready for Compute Plane
       ansible.builtin.debug:
         msg: "NUCs sanitized. Ignition server active at http://192.168.199.5:8080"
+
+- name: Phase 2.3c - Phoenix Rebuild (Bare-metal OS Provisioning)
+  hosts: local_spark
+  become: true
+  vars:
+    # Trigger this with: -e "target_nuc=nuc_1 phoenix_rebuild=true"
+    phoenix_rebuild: false
+    target_nuc: ""
+  tasks:
+    - name: 🔥 PHOENIX - Automate Fresh FCOS Installation (IP-KVM)
+      block:
+        - name: 🔍 CHECK - Ensure target NUC is specified
+          ansible.builtin.fail:
+            msg: "Please specify target_nuc (e.g., nuc_1)"
+          when: target_nuc == ""
+
+        - name: 🔌 SWITCH - Select KVM Switch Port
+          ansible.builtin.uri:
+            url: "https://{{ kvm.ip }}/api/switch/select"
+            method: POST
+            user: "{{ kvm.user }}"
+            password: "{{ kvm.pass }}"
+            force_basic_auth: true
+            validate_certs: false
+            body_format: json
+            body:
+              port: "{{ nuc_mgmt[target_nuc].port }}"
+
+        - name: 💿 MEDIA - Mount FCOS ISO
+          ansible.builtin.uri:
+            url: "https://{{ kvm.ip }}/api/msd/mount"
+            method: POST
+            user: "{{ kvm.user }}"
+            password: "{{ kvm.pass }}"
+            force_basic_auth: true
+            validate_certs: false
+            body_format: json
+            body:
+              url: "{{ kvm.iso_url }}"
+
+        - name: 🔄 REBOOT - Force Hard Reboot via ATX
+          ansible.builtin.uri:
+            url: "https://{{ kvm.ip }}/api/atx/power?action=reboot"
+            method: POST
+            user: "{{ kvm.user }}"
+            password: "{{ kvm.pass }}"
+            force_basic_auth: true
+            validate_certs: false
+
+        - name: ⌨️ KEYS - Send F10 for Boot Menu (Simulated)
+          ansible.builtin.uri:
+            url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+            method: POST
+            user: "{{ kvm.user }}"
+            password: "{{ kvm.pass }}"
+            force_basic_auth: true
+            validate_certs: false
+            body_format: json
+            body:
+              key: "f10"
+          delay: 5
+          retries: 3
+
+      when: phoenix_rebuild | bool

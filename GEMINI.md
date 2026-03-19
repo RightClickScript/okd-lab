@@ -79,7 +79,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 
 ### Phase 3: The Enterprise Core (AMD Epyc KVM)
 - [x] `playbooks/phase-3/playbook-5-identity.yml`: MS AD/DNS VM.
-- [ ] `playbooks/phase-3/playbook-7-morpheus.yml`: Morpheus Appliance VM.
+- [x] `playbooks/phase-3/playbook-7-morpheus.yml`: Morpheus Appliance VM.
 
 ### Phase 4: The Kubernetes Compute Plane
 - [ ] `playbooks/phase-4/playbook-8-okd-masters.yml`: OKD Control Plane VMs (AMD Epyc).

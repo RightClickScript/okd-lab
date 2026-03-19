@@ -126,7 +126,7 @@
             msg: "Please specify target_nuc (e.g., nuc_1)"
           when: target_nuc == ""
 
-        - name: 🔌 SWITCH - Send TESmart Hotkeys (press/release)
+        - name: 🔌 SWITCH - Send TESmart Hotkeys (state=true/false)
           block:
             - name: Tap ControlRight (1)
               ansible.builtin.uri:
@@ -134,14 +134,14 @@
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-              loop: [ "press", "release" ]
+              loop: [ true, false ]
             - name: Tap ControlRight (2)
               ansible.builtin.uri:
                 url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight&state={{ item }}"
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-              loop: [ "press", "release" ]
+              loop: [ true, false ]
             - name: Type Port Number
               ansible.builtin.uri:
                 url: "https://{{ kvm.ip }}/api/hid/print"
@@ -175,8 +175,8 @@
             headers:
               X-KVMD-User: "{{ kvm.user }}"
               X-KVMD-Passwd: "{{ kvm.pass }}"
-          loop: [ "press", "release" ]
-          delay: 1
+          loop: [ true, false ]
+          delay: 0.5
           retries: 10
           until: false
           ignore_errors: true

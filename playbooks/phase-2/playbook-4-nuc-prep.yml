@@ -151,15 +151,26 @@
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
                 body: "{{ nuc_mgmt[target_nuc].port | string }}"
 
-        - name: 💿 MEDIA - Start FCOS ISO Download on PiKVM (Indefinite Wait)
+        - name: 💿 MEDIA - Trigger FCOS ISO Download on PiKVM
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/msd/write_remote?url={{ kvm.iso_url }}"
             method: POST
             validate_certs: false
             headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-            timeout: 600 # 10 minute timeout for download
-          register: iso_download
-          failed_when: iso_download.status != 200 and 'already exists' not in iso_download.json.message | default('')
+          async: 600 # Let it run in background
+          poll: 0
+          register: iso_trigger
+
+        - name: ⏳ MEDIA - Wait for ISO Download to complete
+          ansible.builtin.uri:
+            url: "https://{{ kvm.ip }}/api/msd/list"
+            method: GET
+            validate_certs: false
+            headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
+          register: iso_list
+          until: "iso_list.json.result | selectattr('name', 'equalto', fcos_filename) | list | length > 0"
+          retries: 60
+          delay: 10
 
         - name: 💿 MEDIA - Mount FCOS ISO (set_params)
           ansible.builtin.uri:

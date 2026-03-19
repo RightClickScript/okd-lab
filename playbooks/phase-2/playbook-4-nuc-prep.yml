@@ -118,6 +118,7 @@
     # Trigger this with: -e "target_nuc=nuc_1 phoenix_rebuild=true"
     phoenix_rebuild: false
     target_nuc: ""
+    fcos_filename: "fedora-coreos-39.20240128.3.0-live.x86_64.iso"
   tasks:
     - name: 🔥 PHOENIX - Automate Fresh FCOS Installation (IP-KVM)
       block:
@@ -152,26 +153,19 @@
 
         - name: 💿 MEDIA - Ensure FCOS ISO is on PiKVM
           ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/msd/remote_upload"
+            url: "https://{{ kvm.ip }}/api/msd/write_remote?url={{ kvm.iso_url }}"
             method: POST
             validate_certs: false
             headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-            body_format: json
-            body:
-              url: "{{ kvm.iso_url }}"
-              filename: "fcos.iso"
           register: iso_upload
           failed_when: iso_upload.status != 200 and 'already exists' not in iso_upload.json.message | default('')
 
-        - name: 💿 MEDIA - Mount FCOS ISO
+        - name: 💿 MEDIA - Mount FCOS ISO (set_params)
           ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/msd/mount"
+            url: "https://{{ kvm.ip }}/api/msd/set_params?image={{ fcos_filename }}&cdrom=1"
             method: POST
             validate_certs: false
             headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-            body_format: json
-            body:
-              filename: "fcos.iso"
 
         - name: 🔄 REBOOT - Trigger Reboot on Target NUC (via SSH)
           ansible.builtin.command: "ssh {{ hostvars[target_nuc].ansible_user }}@{{ hostvars[target_nuc].ansible_host }} 'sudo reboot'"

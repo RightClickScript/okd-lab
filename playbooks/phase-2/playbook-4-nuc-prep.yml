@@ -130,10 +130,10 @@
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/switch/select"
             method: POST
-            user: "{{ kvm.user }}"
-            password: "{{ kvm.pass }}"
-            force_basic_auth: true
             validate_certs: false
+            headers:
+              X-KVMD-User: "{{ kvm.user }}"
+              X-KVMD-Passwd: "{{ kvm.pass }}"
             body_format: json
             body:
               port: "{{ nuc_mgmt[target_nuc].port }}"
@@ -142,10 +142,10 @@
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/msd/mount"
             method: POST
-            user: "{{ kvm.user }}"
-            password: "{{ kvm.pass }}"
-            force_basic_auth: true
             validate_certs: false
+            headers:
+              X-KVMD-User: "{{ kvm.user }}"
+              X-KVMD-Passwd: "{{ kvm.pass }}"
             body_format: json
             body:
               url: "{{ kvm.iso_url }}"
@@ -154,19 +154,19 @@
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/atx/power?action=reboot"
             method: POST
-            user: "{{ kvm.user }}"
-            password: "{{ kvm.pass }}"
-            force_basic_auth: true
             validate_certs: false
+            headers:
+              X-KVMD-User: "{{ kvm.user }}"
+              X-KVMD-Passwd: "{{ kvm.pass }}"
 
         - name: ⌨️ KEYS - Send F10 for Boot Menu (Simulated)
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/hid/events/press_key"
             method: POST
-            user: "{{ kvm.user }}"
-            password: "{{ kvm.pass }}"
-            force_basic_auth: true
             validate_certs: false
+            headers:
+              X-KVMD-User: "{{ kvm.user }}"
+              X-KVMD-Passwd: "{{ kvm.pass }}"
             body_format: json
             body:
               key: "f10"

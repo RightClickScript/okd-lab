@@ -27,7 +27,7 @@ all:
     kvm:
       ip: "192.168.1.10"
       user: "admin"
-      pass: "admin"
+      pass: "Admin@12345"
       iso_url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/39.20240128.3.0/x86_64/fedora-coreos-39.20240128.3.0-live.x86_64.iso"
 
     nuc_mgmt:

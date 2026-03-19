@@ -126,21 +126,23 @@
             msg: "Please specify target_nuc (e.g., nuc_1)"
           when: target_nuc == ""
 
-        - name: 🔌 SWITCH - Send TESmart Hotkeys (ControlRight sequence)
+        - name: 🔌 SWITCH - Send TESmart Hotkeys (press/release)
           block:
-            - name: Send ControlRight (1)
+            - name: Tap ControlRight (1)
               ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight"
+                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight&state={{ item }}"
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-            - name: Send ControlRight (2)
+              loop: [ "press", "release" ]
+            - name: Tap ControlRight (2)
               ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight"
+                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight&state={{ item }}"
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-            - name: Send Port Number
+              loop: [ "press", "release" ]
+            - name: Type Port Number
               ansible.builtin.uri:
                 url: "https://{{ kvm.ip }}/api/hid/print"
                 method: POST
@@ -167,13 +169,14 @@
 
         - name: ⌨️ KEYS - Spam F10 for Boot Menu
           ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=F10"
+            url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=F10&state={{ item }}"
             method: POST
             validate_certs: false
             headers:
               X-KVMD-User: "{{ kvm.user }}"
               X-KVMD-Passwd: "{{ kvm.pass }}"
-          delay: 2
+          loop: [ "press", "release" ]
+          delay: 1
           retries: 10
           until: false
           ignore_errors: true

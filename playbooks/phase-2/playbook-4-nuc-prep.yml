@@ -126,22 +126,32 @@
             msg: "Please specify target_nuc (e.g., nuc_1)"
           when: target_nuc == ""
 
-        - name: 🔌 SWITCH - Send TESmart Hotkeys (Right Ctrl, Right Ctrl, Port)
-          ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/hid/events/press_key"
-            method: POST
-            validate_certs: false
-            headers:
-              X-KVMD-User: "{{ kvm.user }}"
-              X-KVMD-Passwd: "{{ kvm.pass }}"
-            body_format: json
-            body:
-              key: "{{ item }}"
-          loop:
-            - "right_ctrl"
-            - "right_ctrl"
-            - "{{ nuc_mgmt[target_nuc].port | string }}"
-          pause: 1 # Small delay between keys
+        - name: 🔌 SWITCH - Send TESmart Hotkeys
+          block:
+            - name: Press Right Ctrl (1)
+              ansible.builtin.uri:
+                url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+                method: POST
+                validate_certs: false
+                headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
+                body_format: json
+                body: { key: "right_ctrl" }
+            - name: Press Right Ctrl (2)
+              ansible.builtin.uri:
+                url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+                method: POST
+                validate_certs: false
+                headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
+                body_format: json
+                body: { key: "right_ctrl" }
+            - name: Press Port Number
+              ansible.builtin.uri:
+                url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+                method: POST
+                validate_certs: false
+                headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
+                body_format: json
+                body: { key: "{{ nuc_mgmt[target_nuc].port | string }}" }
 
         - name: 💿 MEDIA - Mount FCOS ISO via PiKVM
           ansible.builtin.uri:
@@ -173,7 +183,7 @@
               key: "f10"
           delay: 2
           retries: 10
-          until: false # This just keeps it loop-pressing for a bit during the reboot
+          until: false
           ignore_errors: true
 
       when: phoenix_rebuild | bool

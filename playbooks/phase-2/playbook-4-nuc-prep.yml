@@ -126,32 +126,27 @@
             msg: "Please specify target_nuc (e.g., nuc_1)"
           when: target_nuc == ""
 
-        - name: 🔌 SWITCH - Send TESmart Hotkeys
+        - name: 🔌 SWITCH - Send TESmart Hotkeys (ControlRight sequence)
           block:
-            - name: Press Right Ctrl (1)
+            - name: Send ControlRight (1)
               ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight"
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-                body_format: json
-                body: { key: "right_ctrl" }
-            - name: Press Right Ctrl (2)
+            - name: Send ControlRight (2)
               ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight"
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-                body_format: json
-                body: { key: "right_ctrl" }
-            - name: Press Port Number
+            - name: Send Port Number
               ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+                url: "https://{{ kvm.ip }}/api/hid/print"
                 method: POST
                 validate_certs: false
                 headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-                body_format: json
-                body: { key: "{{ nuc_mgmt[target_nuc].port | string }}" }
+                body: "{{ nuc_mgmt[target_nuc].port | string }}"
 
         - name: 💿 MEDIA - Mount FCOS ISO via PiKVM
           ansible.builtin.uri:
@@ -172,15 +167,12 @@
 
         - name: ⌨️ KEYS - Spam F10 for Boot Menu
           ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/hid/events/press_key"
+            url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=F10"
             method: POST
             validate_certs: false
             headers:
               X-KVMD-User: "{{ kvm.user }}"
               X-KVMD-Passwd: "{{ kvm.pass }}"
-            body_format: json
-            body:
-              key: "f10"
           delay: 2
           retries: 10
           until: false

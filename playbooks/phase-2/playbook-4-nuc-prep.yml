@@ -126,9 +126,9 @@
             msg: "Please specify target_nuc (e.g., nuc_1)"
           when: target_nuc == ""
 
-        - name: 🔌 SWITCH - Select KVM Switch Port
+        - name: 🔌 SWITCH - Send TESmart Hotkeys (Right Ctrl, Right Ctrl, Port)
           ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/switch/select"
+            url: "https://{{ kvm.ip }}/api/hid/events/press_key"
             method: POST
             validate_certs: false
             headers:
@@ -136,9 +136,14 @@
               X-KVMD-Passwd: "{{ kvm.pass }}"
             body_format: json
             body:
-              port: "{{ nuc_mgmt[target_nuc].port }}"
+              key: "{{ item }}"
+          loop:
+            - "right_ctrl"
+            - "right_ctrl"
+            - "{{ nuc_mgmt[target_nuc].port | string }}"
+          pause: 1 # Small delay between keys
 
-        - name: 💿 MEDIA - Mount FCOS ISO
+        - name: 💿 MEDIA - Mount FCOS ISO via PiKVM
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/msd/mount"
             method: POST
@@ -150,16 +155,12 @@
             body:
               url: "{{ kvm.iso_url }}"
 
-        - name: 🔄 REBOOT - Force Hard Reboot via ATX
-          ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/atx/power?action=reboot"
-            method: POST
-            validate_certs: false
-            headers:
-              X-KVMD-User: "{{ kvm.user }}"
-              X-KVMD-Passwd: "{{ kvm.pass }}"
+        - name: 🔄 REBOOT - Trigger Reboot on Target NUC (via SSH)
+          ansible.builtin.command: "ssh {{ hostvars[target_nuc].ansible_user }}@{{ hostvars[target_nuc].ansible_host }} 'sudo reboot'"
+          delegate_to: localhost
+          ignore_errors: true
 
-        - name: ⌨️ KEYS - Send F10 for Boot Menu (Simulated)
+        - name: ⌨️ KEYS - Spam F10 for Boot Menu
           ansible.builtin.uri:
             url: "https://{{ kvm.ip }}/api/hid/events/press_key"
             method: POST
@@ -170,7 +171,9 @@
             body_format: json
             body:
               key: "f10"
-          delay: 5
-          retries: 3
+          delay: 2
+          retries: 10
+          until: false # This just keeps it loop-pressing for a bit during the reboot
+          ignore_errors: true
 
       when: phoenix_rebuild | bool

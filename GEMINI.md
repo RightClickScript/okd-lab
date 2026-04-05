@@ -9,7 +9,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 * **NUCs (Compute):** OS (nvme0n1 / SCOS), Data (sda / ext4).
 
 ### Enterprise Software Stack
-* **OS:** Ubuntu 22.04/24.04 (LPT-1, SMS-1), CentOS Stream CoreOS (SCOS) for NUCs.
+* **OS:** Ubuntu 22.04/24.04 (lpt-1, sms-1), CentOS Stream CoreOS (SCOS) for NUCs.
 * **Kubernetes:** OKD 4.20 (SCOS-based).
 * **Provisioning:** Ansible CLI -> Semaphore UI.
 * **Orchestration:** Morpheus Enterprise.
@@ -17,7 +17,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 ## 📜 Architectural Rules
 * **No SSH:** No manual SSH after `bootstrap.sh`. All config via Ansible.
 * **Atomic Rollbacks:** All data disks (`/mnt/data`) use ZFS snapshots (e.g., `@clean-install`) to allow instant reverts of the distribution hub, VMs, and containers.
-* **Distribution Hub:** LPT-1 serves as the central repo for SCOS ISOs, OKD binaries, and Ignition files via Nginx on port 8080.
+* **Distribution Hub:** lpt-1 serves as the central repo for SCOS ISOs, OKD binaries, and Ignition files via Nginx on port 8080.
 
 ## 📜 Architectural Rules
 * **No SSH:** No manual SSH after `bootstrap.sh`. All config via Ansible.
@@ -57,11 +57,11 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 ### Host Assignment Table
 | Host Role | Physical Name | Management IP | MAC Address |
 | :--- | :--- | :--- | :--- |
-| **Container Host** | Laptop | 192.168.199.5 | N/A |
-| **AMD Epyc** | SMS (SuperMicro) | 192.168.199.4 | 5e:dc:07:8f:3e:01 |
-| **NUC 1** | NUC | 192.168.199.1 | 22:27:c6:e0:ab:1a |
-| **NUC 2** | NUC | 192.168.199.2 | 02:0f:a8:43:7f:47 |
-| **NUC 3** | NUC | 192.168.199.3 | 9e:cb:b7:23:f4:38 |
+| **Container Host** | lpt-1 | 192.168.199.5 | N/A |
+| **Hypervisor** | sms-1 | 192.168.199.4 | 5e:dc:07:8f:3e:01 |
+| **NUC 1** | nuc-1 | 192.168.199.1 | 22:27:c6:e0:ab:1a |
+| **NUC 2** | nuc-2 | 192.168.199.2 | 02:0f:a8:43:7f:47 |
+| **NUC 3** | nuc-3 | 192.168.199.3 | 9e:cb:b7:23:f4:38 |
 
 ## 🎯 Master Bootstrapping Sequence
 

@@ -166,3 +166,8 @@ cython_debug/
 .devcontainer/commandhistory/
 RHEL_pull_secret.json
 
+# Playbook Artifacts & Secrets
+playbooks/artifacts/**/*
+!playbooks/artifacts/.gitkeep
+!playbooks/artifacts/**/README.md
+

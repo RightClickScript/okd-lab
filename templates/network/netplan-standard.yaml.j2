@@ -9,26 +9,32 @@ network:
       interfaces:
         - {{ physical_iface }}
       parameters:
-        mode: active-backup # Standard for single-link or non-LACP switches
+        mode: active-backup
         mii-monitor-interval: 100
   bridges:
+    # br0: Management Network (VLAN 199 Untagged)
+    # Using a bridge instead of assigning IP to bond0 allows host-to-VM communication
     br0:
       interfaces: [bond0]
       addresses:
         - {{ ansible_host }}/24
       routes:
         - to: default
-          via: {{ mgmt_gateway }}
+          via: {{ network.mgmt_gateway }}
       nameservers:
-        addresses: [{{ unifi_router }}, 8.8.8.8]
-        search: [{{ domain_name }}]
+        addresses: [{{ network.primary_dns }}, 8.8.8.8]
+        search: {{ network.search_domains }}
       parameters:
         stp: no
+
+    # br198: Compute/VM Network (VLAN 198 Tagged)
     br198:
-      interfaces: [vlan198]
-      addresses:
-        - {{ vlan198_ip }}/24
+      interfaces: [vlan{{ network.vlan198_id }}]
+      dhcp4: yes
+      parameters:
+        stp: no
+
   vlans:
-    vlan198:
-      id: 198
+    vlan{{ network.vlan198_id }}:
+      id: {{ network.vlan198_id }}
       link: bond0

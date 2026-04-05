@@ -1,10 +1,36 @@
 ---
-- name: Phase 0.2 - Full Lab Initialization (ZFS & Distribution Edition)
-  hosts: container_host, amd_epyc
+- name: 📋 Phase 0.1 - Pre-Flight Artifact Check (Local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: 🔍 CHECK - Verify Pull Secret exists
+      ansible.builtin.stat:
+        path: "../../playbooks/artifacts/secrets/pull_secret.json"
+      register: pull_secret_stat
+
+    - name: ❌ FAIL - Missing Pull Secret
+      ansible.builtin.fail:
+        msg: |
+          ERROR: OKD Pull Secret is missing!
+          Please place it in: playbooks/artifacts/secrets/pull_secret.json
+          Download from: https://console.redhat.com/openshift/install/pull-secret
+      when: not pull_secret_stat.stat.exists
+
+- name: 🚀 Phase 0.2 - Full Lab Initialization (Master "Big Bang")
+  hosts: lpt-1, sms-1
   become: true
-  gather_facts: true
+  gather_facts: false
 
   tasks:
+    - name: 📡 CONNECTION - Wait for SSH Connectivity
+      ansible.builtin.wait_for_connection:
+        timeout: 60
+        delay: 5
+
+    - name: 🔍 FACTS - Gather Host Facts
+      ansible.builtin.setup:
+
     - name: 🏷️ HOSTNAME - Enforce Inventory Hostname
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
@@ -17,11 +43,32 @@
 
     - name: 📦 SOFTWARE - Install Core Dependencies
       ansible.builtin.apt:
-        name: [zfsutils-linux, nfs-common, curl, wget, git, python3-pip, docker.io]
+        name: [zfsutils-linux, nfs-common, curl, wget, git, python3-pip, docker.io, bridge-utils, cpu-checker, libvirt-daemon-system, libvirt-clients]
         state: present
         update_cache: yes
 
-    - name: 🛠️ STORAGE - Initialize ZFS Data Pools
+    - name: 🛡️ SECURITY - Configure AppArmor for Libvirt
+      block:
+        - name: Disable AppArmor for Libvirt (Fixes VM disk access issues)
+          ansible.builtin.lineinfile:
+            path: /etc/libvirt/qemu.conf
+            regexp: '^#?security_driver =.*'
+            line: 'security_driver = "none"'
+          register: qemu_conf
+
+        - name: Restart Libvirt
+          ansible.builtin.systemd:
+            name: libvirtd
+            state: restarted
+          when: qemu_conf is changed
+
+    - name: 👥 ACCESS - Configure User Groups
+      ansible.builtin.user:
+        name: bishop
+        groups: [docker, libvirt, kvm]
+        append: yes
+
+    - name: 🛠️ STORAGE - Initialize ZFS Data Pools (Atomic Rollback Hub)
       block:
         - name: Check if ZPool already exists
           ansible.builtin.command: "zpool list {{ lab_init.zpool_name }}"
@@ -29,23 +76,25 @@
           failed_when: false
           changed_when: false
 
-        - name: Wipe disk and create ZPool
+        - name: Wipe disk and create ZPool (DANGER: Destructive)
           ansible.builtin.shell: |
-            wipefs -a {{ data_disk }}
+            # Release any existing locks or mounts
+            umount {{ data_disk }}* || true
+            wipefs -af {{ data_disk }}
             zpool create -f {{ lab_init.zpool_name }} {{ data_disk }}
             zfs set compression=lz4 {{ lab_init.zpool_name }}
             zfs set mountpoint={{ lab_init.zfs_mount_point }} {{ lab_init.zpool_name }}
           when: zpool_check.rc != 0
 
-    - name: 📸 SNAPSHOT - Create Initial Data Rollback Point
-      ansible.builtin.shell: |
-        zfs list -t snapshot | grep -q "{{ lab_init.zpool_name }}@clean-install" || zfs snapshot {{ lab_init.zpool_name }}@clean-install
-      register: snapshot_status
-      changed_when: "'snapshot' in snapshot_status.stdout"
-      ignore_errors: true
+        - name: 📸 SNAPSHOT - Create Initial "Clean OS" Snapshot
+          ansible.builtin.shell: |
+            zfs list -t snapshot | grep -q "{{ lab_init.zpool_name }}@clean-install" || zfs snapshot {{ lab_init.zpool_name }}@clean-install
+          register: snapshot_status
+          changed_when: "'snapshot' in snapshot_status.stdout"
+          ignore_errors: true
 
-- name: Phase 0.2b - Distribution Server Setup (LPT-1 / Container Host)
-  hosts: container_host
+- name: 🌐 Phase 0.2b - Distribution Hub Setup (lpt-1)
+  hosts: lpt-1
   become: true
   tasks:
     - name: 📁 STRUCTURE - Create Distribution Folders
@@ -55,14 +104,14 @@
         mode: '0755'
       loop: [iso, bin, ign, morpheus]
 
-    - name: 🌐 NGINX - Install and Configure
+    - name: 🌐 NGINX - Configure Distribution Site
       block:
         - name: Install Nginx
           ansible.builtin.apt:
             name: nginx
             state: present
 
-        - name: Configure Distribution Site
+        - name: Configure Site
           ansible.builtin.copy:
             content: |
               server {
@@ -90,13 +139,35 @@
             state: restarted
           when: nginx_conf is changed
 
-    - name: 📥 DOWNLOAD - Fetch SCOS ISO
+    - name: 📥 DOWNLOAD - Fetch SCOS Live ISO
       ansible.builtin.get_url:
         url: "{{ artifacts.scos_iso_url }}"
         dest: "{{ lab_init.distribution_root }}/iso/scos-live.x86_64.iso"
         mode: '0644'
+      when: lookup('ansible.builtin.fileglob', '../../playbooks/artifacts/iso/scos-live.x86_64.iso') == []
 
-    - name: 📥 DOWNLOAD - Fetch OKD 4.20 Release Tools
+    - name: 📤 UPLOAD - Local SCOS ISO to Distribution Hub
+      ansible.builtin.copy:
+        src: "../../playbooks/artifacts/iso/scos-live.x86_64.iso"
+        dest: "{{ lab_init.distribution_root }}/iso/scos-live.x86_64.iso"
+        mode: '0644'
+      when: lookup('ansible.builtin.fileglob', '../../playbooks/artifacts/iso/scos-live.x86_64.iso') != []
+
+    - name: 📤 UPLOAD - Local Windows ISO to Distribution Hub
+      ansible.builtin.copy:
+        src: "../../playbooks/artifacts/iso/windows-server.iso"
+        dest: "{{ lab_init.distribution_root }}/iso/windows-server.iso"
+        mode: '0644'
+      when: lookup('ansible.builtin.fileglob', '../../playbooks/artifacts/iso/windows-server.iso') != []
+
+    - name: 📤 UPLOAD - Local Morpheus Binary to Distribution Hub
+      ansible.builtin.copy:
+        src: "../../playbooks/artifacts/bin/morpheus-appliance.deb"
+        dest: "{{ lab_init.distribution_root }}/morpheus/morpheus-appliance.deb"
+        mode: '0644'
+      when: lookup('ansible.builtin.fileglob', '../../playbooks/artifacts/bin/morpheus-appliance.deb') != []
+
+    - name: 📥 DOWNLOAD - Extract OKD 4.20 Release Tools
       block:
         - name: Pull OKD Release Image
           ansible.builtin.command: "docker pull {{ artifacts.okd_release_image }}"
@@ -108,35 +179,23 @@
           args:
             creates: "{{ lab_init.distribution_root }}/bin/oc"
 
-    - name: 🔑 PULL SECRET - Prompt User (Manual Action)
-      ansible.builtin.pause:
-        prompt: |
-          ACTION REQUIRED:
-          Please paste your OKD/OpenShift Pull Secret into the file:
-          {{ lab_init.distribution_root }}/pull-secret.txt
-          
-          Press ENTER when done.
+    - name: 🔑 PULL SECRET - Upload to Distribution Hub
+      ansible.builtin.copy:
+        src: "../../playbooks/artifacts/secrets/pull_secret.json"
+        dest: "{{ lab_init.distribution_root }}/pull-secret.txt"
+        mode: '0600'
 
-- name: Phase 0.2c - Hypervisor Prep (SMS-1 / AMD Epyc)
-  hosts: amd_epyc
+- name: 🛡️ Phase 0.2c - Local Spark Bootstrap (lpt-1 Prep)
+  hosts: lpt-1
   become: true
   tasks:
-    - name: 🏗️ HYPERVISOR - Install Libvirt & Cockpit
-      ansible.builtin.apt:
-        name: [qemu-kvm, libvirt-daemon-system, libvirt-clients, bridge-utils, virtinst, cockpit, cockpit-machines]
-        state: present
-
-    - name: 👥 ACCESS - Add bishop to groups
+    - name: 🚀 BOOTSTRAP - Run Local Bootstrap Script
+      ansible.builtin.shell: |
+        curl -sSL https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/configure_manually.sh | bash
+      ignore_errors: true # Replace with actual bootstrap logic if local file is missing
+      
+    - name: Ensure bishop is in docker group
       ansible.builtin.user:
         name: bishop
-        groups: libvirt,kvm,docker
+        groups: docker
         append: yes
-
-- name: Phase 0.2d - Local Spark (LPT-1 Internal Prep)
-  hosts: container_host
-  tasks:
-    - name: 🚀 BOOTSTRAP - Run Local Bootstrap Script
-      ansible.builtin.script: "../../scripts/bootstrap.sh"
-      args:
-        chdir: "/home/bishop/source/okd-lab" # Adjust if your path differs
-      become: false

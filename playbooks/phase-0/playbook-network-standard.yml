@@ -1,0 +1,28 @@
+---
+- name: 🌐 Phase 0.3 - Standardize Lab Networking (Bridges & VLANs)
+  hosts: lpt-1, sms-1
+  become: true
+  tasks:
+    - name: 📁 BACKUP - Preserve Existing Netplan
+      ansible.builtin.shell: |
+        ls /etc/netplan/*.yaml | grep -v "00-installer-config.yaml.bak" | xargs -I {} mv {} {}.bak
+      ignore_errors: true
+
+    - name: 🛠️ NETPLAN - Generate Standard Configuration (br0 + vlan198)
+      ansible.builtin.template:
+        src: "../../templates/network/netplan-standard.yaml.j2"
+        dest: /etc/netplan/99-homelab-standard.yaml
+        mode: '0600'
+      register: netplan_gen
+
+    - name: 🚀 APPLY - Execute Netplan Config (Non-Blocking)
+      ansible.builtin.shell: |
+        netplan apply &
+      async: 10
+      poll: 0
+      when: netplan_gen is changed
+
+    - name: 📡 WAIT - Confirm Connectivity Post-Networking Change
+      ansible.builtin.wait_for_connection:
+        timeout: 60
+        delay: 5

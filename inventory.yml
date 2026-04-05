@@ -7,7 +7,14 @@ all:
     ansible_ssh_private_key_file: "~/.ssh/linux"
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-    # AD & DNS Configuration (Migrated from AD-TEST)
+    # Network Infrastructure Configuration
+    network:
+      mgmt_gateway: "192.168.199.254"
+      primary_dns: "192.168.1.1"
+      vlan198_id: 198
+      search_domains: ["homelab.local"]
+
+    # AD & DNS Configuration
     ad:
       domain_NetBIOS: "homelab"
       domain_FQDN: "homelab.local"
@@ -28,25 +35,25 @@ all:
       ip: "192.168.1.10"
       user: "admin"
       pass: "Admin@12345"
-      iso_url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/39.20240128.3.0/x86_64/fedora-coreos-39.20240128.3.0-live.x86_64.iso"
+      iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-live-iso.x86_64.iso"
 
     nuc_mgmt:
-      nuc_1: { port: 1 }
-      nuc_2: { port: 2 }
-      nuc_3: { port: 3 }
-      amd_epyc: { port: 4 }
-      container_host: { port: 5 }
+      nuc-1: { port: 1 }
+      nuc-2: { port: 2 }
+      nuc-3: { port: 3 }
+      sms-1: { port: 4 }
+      lpt-1: { port: 5 }
 
     morpheusdetails:
       name: "morpheus-01"
       IPAddress: "192.168.199.11"
-      Memory: 16384 # Morpheus requires at least 16GB
+      Memory: 16384
       CPU: 4
       BootDiskSize: 250
-      binary_local_path: "/home/bishop/source/okd-lab/playbooks/artifacts/HPE_Morpheus_Enterprise_Appliance_8.0.13-2_debian_x86_64_S6E64-11136.deb"
+      binary_local_path: "../../playbooks/artifacts/bin/morpheus-appliance.deb"
       binary_remote_path: "/tmp/morpheus-appliance.deb"
 
-    # Lab Init Disk Configuration (ZFS Edition)
+    # Lab Init Disk Configuration (ZFS for Snapshots)
     lab_init:
       zpool_name: "datapool"
       zfs_mount_point: "/mnt/data"
@@ -54,75 +61,73 @@ all:
 
     # OKD 4.20 & SCOS Artifacts
     artifacts:
-      scos_iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/stable/builds/latest/x86_64/centos-stream-coreos-live.x86_64.iso"
-      # Extraction of tools will be handled via 'oc adm release extract' in the playbook
+      scos_iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-live-iso.x86_64.iso"
       okd_release_image: "quay.io/okd/scos-release:4.20.0-okd-scos.0"
   hosts:
     localhost:
       ansible_connection: local
       ansible_python_interpreter: "{{ ansible_playbook_python }}"
-    container_host:
+    lpt-1:
       ansible_host: 192.168.199.5
       os_disk: "/dev/sda"
       data_disk: "/dev/sdb"
       physical_iface: enp0s25
-      ansible_python_interpreter: "/home/bishop/source/okd-lab/.venv/bin/python3"
+      ansible_python_interpreter: "/usr/bin/python3"
       semaphore_port: 3000
       vault_ui_port: 30002
       vault_api_port: 30001
       awx_port: 30005
-    amd_epyc:
+    sms-1:
       ansible_host: 192.168.199.4
       os_disk: "/dev/sda"
       data_disk: "/dev/nvme0n1"
       mac: "5e:dc:07:8f:3e:01"
       physical_iface: eno1
-    nuc_1:
+    nuc-1:
       ansible_host: 192.168.199.1
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
       mac: "22:27:c6:e0:ab:1a"
       physical_iface: eno1
-    nuc_2:
+    nuc-2:
       ansible_host: 192.168.199.2
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
       mac: "02:0f:a8:43:7f:47"
       physical_iface: eno1
-    nuc_3:
+    nuc-3:
       ansible_host: 192.168.199.3
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
       mac: "9e:cb:b7:23:f4:38"
       physical_iface: eno1
-    identity_01:
+    identity-01:
       ansible_host: 192.168.199.10
-    morpheus_01:
+    morpheus-01:
       ansible_host: 192.168.199.11
   children:
     local_spark:
       hosts:
-        container_host:
+        lpt-1:
     management_plane:
       hosts:
-        amd_epyc:
+        sms-1:
     compute_plane:
       hosts:
-        nuc_1:
-        nuc_2:
-        nuc_3:
+        nuc-1:
+        nuc-2:
+        nuc-3:
     windows:
       hosts:
-        identity_01:
+        identity-01:
       vars:
         ansible_user: "administrator"
-        # ansible_password: "{{ ansible_password }}"
         ansible_connection: "winrm"
         ansible_winrm_transport: "basic"
         ansible_winrm_server_cert_validation: "ignore"
         ansible_port: 5985
     morpheus:
       hosts:
-        morpheus_01:
+        morpheus-01:
       vars:
         ansible_python_interpreter: "/usr/bin/python3"

@@ -3,18 +3,21 @@
 ## 🏗️ Architecture & System Environment
 Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 
-### Hardware Inventory
-* **DEV Laptop:** Thin-client, VSCode Dev Container.
-* **Container Host Laptop:** Out-of-Band automation engine (Docker/K3s, Vault, Semaphore UI).
-* **AMD Epyc Server:** Management Plane (Ubuntu, KVM/libvirt).
-* **3x Intel NUCs:** Compute Plane (FCOS, OKD workers).
+### Hardware Inventory & Disk Mapping
+* **LPT-1 (Container Host):** OS (sda / ext4), Data (sdb / ZFS `datapool`).
+* **SMS-1 (AMD Epyc):** OS (sda / ext4), Data (nvme0n1 / ZFS `datapool`).
+* **NUCs (Compute):** OS (nvme0n1 / SCOS), Data (sda / ext4).
 
 ### Enterprise Software Stack
+* **OS:** Ubuntu 22.04/24.04 (LPT-1, SMS-1), CentOS Stream CoreOS (SCOS) for NUCs.
+* **Kubernetes:** OKD 4.20 (SCOS-based).
 * **Provisioning:** Ansible CLI -> Semaphore UI.
 * **Orchestration:** Morpheus Enterprise.
-* **Day-2 Automation:** Ansible AWX.
-* **Identity/DNS/IPAM:** MS AD & DNS.
-* **Compute:** OKD (OpenShift) with OpenShift Virtualization.
+
+## 📜 Architectural Rules
+* **No SSH:** No manual SSH after `bootstrap.sh`. All config via Ansible.
+* **Atomic Rollbacks:** All data disks (`/mnt/data`) use ZFS snapshots (e.g., `@clean-install`) to allow instant reverts of the distribution hub, VMs, and containers.
+* **Distribution Hub:** LPT-1 serves as the central repo for SCOS ISOs, OKD binaries, and Ignition files via Nginx on port 8080.
 
 ## 📜 Architectural Rules
 * **No SSH:** No manual SSH after `bootstrap.sh`. All config via Ansible.

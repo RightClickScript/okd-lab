@@ -1,6 +1,6 @@
 ---
-- name: Phase 0.2 - Full Lab Initialization (ZFS Edition)
-  hosts: local_spark, management_plane
+- name: Phase 0.2 - Full Lab Initialization (ZFS & Distribution Edition)
+  hosts: container_host, amd_epyc
   become: true
   gather_facts: true
 
@@ -8,24 +8,23 @@
     - name: 🏷️ HOSTNAME - Enforce Inventory Hostname
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
-      register: hostname_fix
 
-    - name: 🏷️ HOSTNAME - Update /etc/hosts
-      ansible.builtin.lineinfile:
-        path: /etc/hosts
-        regexp: '^127\.0\.1\.1'
-        line: "127.0.1.1 {{ inventory_hostname }}"
+    - name: 🔑 SSH - Authorize Public Key for Bishop
+      ansible.posix.authorized_key:
+        user: bishop
         state: present
+        key: "{{ ansible_ssh_public_key }}"
 
-    - name: 📦 SOFTWARE - Install ZFS Utilities
+    - name: 📦 SOFTWARE - Install Core Dependencies
       ansible.builtin.apt:
-        name: zfsutils-linux
+        name: [zfsutils-linux, nfs-common, curl, wget, git, python3-pip, docker.io]
         state: present
+        update_cache: yes
 
     - name: 🛠️ STORAGE - Initialize ZFS Data Pools
       block:
         - name: Check if ZPool already exists
-          ansible.builtin.command: "zpool list datapool"
+          ansible.builtin.command: "zpool list {{ lab_init.zpool_name }}"
           register: zpool_check
           failed_when: false
           changed_when: false
@@ -33,97 +32,93 @@
         - name: Wipe disk and create ZPool
           ansible.builtin.shell: |
             wipefs -a {{ data_disk }}
-            zpool create -f datapool {{ data_disk }}
-            zfs set compression=lz4 datapool
-            zfs set mountpoint={{ mount_path }} datapool
+            zpool create -f {{ lab_init.zpool_name }} {{ data_disk }}
+            zfs set compression=lz4 {{ lab_init.zpool_name }}
+            zfs set mountpoint={{ lab_init.zfs_mount_point }} {{ lab_init.zpool_name }}
           when: zpool_check.rc != 0
 
-    - name: 📸 SNAPSHOT - Create Initial OS Rollback Point
+    - name: 📸 SNAPSHOT - Create Initial Data Rollback Point
       ansible.builtin.shell: |
-        # Identify the root dataset (usually rpool/USERDATA/...)
-        ROOT_DS=$(zfs list -H -o name /)
-        if [ ! -z "$ROOT_DS" ]; then
-          zfs list -t snapshot | grep -q "factory-reset" || zfs snapshot $ROOT_DS@factory-reset
-        fi
+        zfs list -t snapshot | grep -q "{{ lab_init.zpool_name }}@clean-install" || zfs snapshot {{ lab_init.zpool_name }}@clean-install
       register: snapshot_status
       changed_when: "'snapshot' in snapshot_status.stdout"
       ignore_errors: true
 
-    - name: 🛡️ SECURITY - Apply AppArmor Fix (SMS-1 only)
-      ansible.builtin.lineinfile:
-        path: /etc/apparmor.d/local/abstractions/libvirt-qemu
-        line: '"/var/lib/libvirt/images/*.ign" r,'
-        create: yes
-        state: present
-      register: apparmor_fix
-      when: "'management_plane' in group_names"
-
-    - name: 🔄 RESTART - Reload AppArmor
-      ansible.builtin.systemd:
-        name: apparmor
-        state: restarted
-      when: apparmor_fix is changed
-
-    - name: 🌐 NETWORK - Standardize Netplan (Bridges & VLANs)
-      block:
-        - name: Remove existing netplan configs
-          ansible.builtin.shell: "rm -f /etc/netplan/*.yaml"
-        
-        - name: Apply standard Netplan template
-          ansible.builtin.template:
-            src: "../../templates/network/netplan-standard.yaml.j2"
-            dest: "/etc/netplan/00-lab-standard.yaml"
-            mode: '0600'
-          register: netplan_conf
-
-        - name: Apply Netplan
-          ansible.builtin.command: "netplan apply"
-          async: 45
-          poll: 0
-          when: netplan_conf is changed
-      tags: network
-
-- name: Phase 0.2b - Distribution Server Setup (LPT-1)
-  hosts: lpt-1
+- name: Phase 0.2b - Distribution Server Setup (LPT-1 / Container Host)
+  hosts: container_host
   become: true
   tasks:
-    - name: 📦 SOFTWARE - Install Distribution Tools
-      ansible.builtin.apt:
-        name: [nginx, python3-pip, genisoimage, unzip]
-        state: present
-
     - name: 📁 STRUCTURE - Create Distribution Folders
       ansible.builtin.file:
-        path: "/opt/distribution/{{ item }}"
+        path: "{{ lab_init.distribution_root }}/{{ item }}"
         state: directory
         mode: '0755'
-      loop: [iso, bin, ign]
+      loop: [iso, bin, ign, morpheus]
 
-    - name: 🌐 NGINX - Configure Distribution Server
-      ansible.builtin.copy:
-        content: |
-          server {
-            listen 8080;
-            root /opt/distribution;
-            autoindex on;
-          }
-        dest: /etc/nginx/sites-available/distribution
-      register: nginx_conf
+    - name: 🌐 NGINX - Install and Configure
+      block:
+        - name: Install Nginx
+          ansible.builtin.apt:
+            name: nginx
+            state: present
 
-    - name: 🔗 NGINX - Enable Site
-      ansible.builtin.file:
-        src: /etc/nginx/sites-available/distribution
-        dest: /etc/nginx/sites-enabled/distribution
-        state: link
+        - name: Configure Distribution Site
+          ansible.builtin.copy:
+            content: |
+              server {
+                listen 8080;
+                root {{ lab_init.distribution_root }};
+                autoindex on;
+              }
+            dest: /etc/nginx/sites-available/distribution
+          register: nginx_conf
 
-    - name: 🔄 RESTART - Restart Nginx
-      ansible.builtin.systemd:
-        name: nginx
-        state: restarted
-      when: nginx_conf is changed
+        - name: Enable Site
+          ansible.builtin.file:
+            src: /etc/nginx/sites-available/distribution
+            dest: /etc/nginx/sites-enabled/distribution
+            state: link
 
-- name: Phase 0.2c - Hypervisor Setup (SMS-1)
-  hosts: sms-1
+        - name: Remove Default Site
+          ansible.builtin.file:
+            path: /etc/nginx/sites-enabled/default
+            state: absent
+
+        - name: Restart Nginx
+          ansible.builtin.systemd:
+            name: nginx
+            state: restarted
+          when: nginx_conf is changed
+
+    - name: 📥 DOWNLOAD - Fetch SCOS ISO
+      ansible.builtin.get_url:
+        url: "{{ artifacts.scos_iso_url }}"
+        dest: "{{ lab_init.distribution_root }}/iso/scos-live.x86_64.iso"
+        mode: '0644'
+
+    - name: 📥 DOWNLOAD - Fetch OKD 4.20 Release Tools
+      block:
+        - name: Pull OKD Release Image
+          ansible.builtin.command: "docker pull {{ artifacts.okd_release_image }}"
+
+        - name: Extract Tools (oc, openshift-install)
+          ansible.builtin.shell: |
+            docker run --rm -v {{ lab_init.distribution_root }}/bin:/output {{ artifacts.okd_release_image }} cp /usr/bin/oc /output/
+            docker run --rm -v {{ lab_init.distribution_root }}/bin:/output {{ artifacts.okd_release_image }} cp /usr/bin/openshift-install /output/
+          args:
+            creates: "{{ lab_init.distribution_root }}/bin/oc"
+
+    - name: 🔑 PULL SECRET - Prompt User (Manual Action)
+      ansible.builtin.pause:
+        prompt: |
+          ACTION REQUIRED:
+          Please paste your OKD/OpenShift Pull Secret into the file:
+          {{ lab_init.distribution_root }}/pull-secret.txt
+          
+          Press ENTER when done.
+
+- name: Phase 0.2c - Hypervisor Prep (SMS-1 / AMD Epyc)
+  hosts: amd_epyc
   become: true
   tasks:
     - name: 🏗️ HYPERVISOR - Install Libvirt & Cockpit
@@ -131,8 +126,17 @@
         name: [qemu-kvm, libvirt-daemon-system, libvirt-clients, bridge-utils, virtinst, cockpit, cockpit-machines]
         state: present
 
-    - name: 👥 ACCESS - Add bishop to libvirt group
+    - name: 👥 ACCESS - Add bishop to groups
       ansible.builtin.user:
         name: bishop
-        groups: libvirt,kvm
+        groups: libvirt,kvm,docker
         append: yes
+
+- name: Phase 0.2d - Local Spark (LPT-1 Internal Prep)
+  hosts: container_host
+  tasks:
+    - name: 🚀 BOOTSTRAP - Run Local Bootstrap Script
+      ansible.builtin.script: "../../scripts/bootstrap.sh"
+      args:
+        chdir: "/home/bishop/source/okd-lab" # Adjust if your path differs
+      become: false

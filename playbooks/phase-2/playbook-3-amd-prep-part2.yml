@@ -21,6 +21,8 @@
           - virt-manager
           - ovmf
           - python3-lxml
+          - cockpit
+          - cockpit-machines
         state: present
 
     - name: 👥 ACCESS - Add bishop to libvirt group

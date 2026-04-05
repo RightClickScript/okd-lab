@@ -1,0 +1,138 @@
+---
+- name: Phase 0.2 - Full Lab Initialization (ZFS Edition)
+  hosts: local_spark, management_plane
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: 🏷️ HOSTNAME - Enforce Inventory Hostname
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+      register: hostname_fix
+
+    - name: 🏷️ HOSTNAME - Update /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1'
+        line: "127.0.1.1 {{ inventory_hostname }}"
+        state: present
+
+    - name: 📦 SOFTWARE - Install ZFS Utilities
+      ansible.builtin.apt:
+        name: zfsutils-linux
+        state: present
+
+    - name: 🛠️ STORAGE - Initialize ZFS Data Pools
+      block:
+        - name: Check if ZPool already exists
+          ansible.builtin.command: "zpool list datapool"
+          register: zpool_check
+          failed_when: false
+          changed_when: false
+
+        - name: Wipe disk and create ZPool
+          ansible.builtin.shell: |
+            wipefs -a {{ data_disk }}
+            zpool create -f datapool {{ data_disk }}
+            zfs set compression=lz4 datapool
+            zfs set mountpoint={{ mount_path }} datapool
+          when: zpool_check.rc != 0
+
+    - name: 📸 SNAPSHOT - Create Initial OS Rollback Point
+      ansible.builtin.shell: |
+        # Identify the root dataset (usually rpool/USERDATA/...)
+        ROOT_DS=$(zfs list -H -o name /)
+        if [ ! -z "$ROOT_DS" ]; then
+          zfs list -t snapshot | grep -q "factory-reset" || zfs snapshot $ROOT_DS@factory-reset
+        fi
+      register: snapshot_status
+      changed_when: "'snapshot' in snapshot_status.stdout"
+      ignore_errors: true
+
+    - name: 🛡️ SECURITY - Apply AppArmor Fix (SMS-1 only)
+      ansible.builtin.lineinfile:
+        path: /etc/apparmor.d/local/abstractions/libvirt-qemu
+        line: '"/var/lib/libvirt/images/*.ign" r,'
+        create: yes
+        state: present
+      register: apparmor_fix
+      when: "'management_plane' in group_names"
+
+    - name: 🔄 RESTART - Reload AppArmor
+      ansible.builtin.systemd:
+        name: apparmor
+        state: restarted
+      when: apparmor_fix is changed
+
+    - name: 🌐 NETWORK - Standardize Netplan (Bridges & VLANs)
+      block:
+        - name: Remove existing netplan configs
+          ansible.builtin.shell: "rm -f /etc/netplan/*.yaml"
+        
+        - name: Apply standard Netplan template
+          ansible.builtin.template:
+            src: "../../templates/network/netplan-standard.yaml.j2"
+            dest: "/etc/netplan/00-lab-standard.yaml"
+            mode: '0600'
+          register: netplan_conf
+
+        - name: Apply Netplan
+          ansible.builtin.command: "netplan apply"
+          async: 45
+          poll: 0
+          when: netplan_conf is changed
+      tags: network
+
+- name: Phase 0.2b - Distribution Server Setup (LPT-1)
+  hosts: lpt-1
+  become: true
+  tasks:
+    - name: 📦 SOFTWARE - Install Distribution Tools
+      ansible.builtin.apt:
+        name: [nginx, python3-pip, genisoimage, unzip]
+        state: present
+
+    - name: 📁 STRUCTURE - Create Distribution Folders
+      ansible.builtin.file:
+        path: "/opt/distribution/{{ item }}"
+        state: directory
+        mode: '0755'
+      loop: [iso, bin, ign]
+
+    - name: 🌐 NGINX - Configure Distribution Server
+      ansible.builtin.copy:
+        content: |
+          server {
+            listen 8080;
+            root /opt/distribution;
+            autoindex on;
+          }
+        dest: /etc/nginx/sites-available/distribution
+      register: nginx_conf
+
+    - name: 🔗 NGINX - Enable Site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/distribution
+        dest: /etc/nginx/sites-enabled/distribution
+        state: link
+
+    - name: 🔄 RESTART - Restart Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+      when: nginx_conf is changed
+
+- name: Phase 0.2c - Hypervisor Setup (SMS-1)
+  hosts: sms-1
+  become: true
+  tasks:
+    - name: 🏗️ HYPERVISOR - Install Libvirt & Cockpit
+      ansible.builtin.apt:
+        name: [qemu-kvm, libvirt-daemon-system, libvirt-clients, bridge-utils, virtinst, cockpit, cockpit-machines]
+        state: present
+
+    - name: 👥 ACCESS - Add bishop to libvirt group
+      ansible.builtin.user:
+        name: bishop
+        groups: libvirt,kvm
+        append: yes

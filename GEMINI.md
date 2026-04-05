@@ -75,7 +75,7 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 ### Phase 2: The Hypervisor Foundation (AMD Epyc & NUCs)
 - [x] `playbooks/phase-2/playbook-3-amd-prep-part1.yml`: Sanitization & Networking on AMD Epyc.
 - [x] `playbooks/phase-2/playbook-3-amd-prep-part2.yml`: KVM/libvirt & Storage on AMD Epyc.
-- [ ] `playbooks/phase-2/playbook-4-nuc-prep.yml`: Wake-on-LAN & FCOS Ignition web server.
+- [x] `playbooks/phase-2/playbook-4-nuc-prep.yml`: Wake-on-LAN & FCOS Ignition web server.
 
 ### Phase 3: The Enterprise Core (AMD Epyc KVM)
 - [x] `playbooks/phase-3/playbook-5-identity.yml`: MS AD/DNS VM.

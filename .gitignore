@@ -164,3 +164,5 @@ cython_debug/
 
 # Ignore devcontainer command history
 .devcontainer/commandhistory/
+RHEL_pull_secret.json
+

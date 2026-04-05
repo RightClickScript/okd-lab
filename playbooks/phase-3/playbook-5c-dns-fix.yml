@@ -1,0 +1,105 @@
+---
+- name: Phase 3-1c - Fix DNS PTR & OKD Readiness
+  hosts: windows
+  gather_facts: false
+
+  vars:
+    reverse_zone: "199.168.192.in-addr.arpa"
+    unifi_router: "192.168.1.1"
+
+  tasks:
+    - name: 🌐 REVERSE - Create Reverse Lookup Zone (192.168.199.x)
+      ansible.windows.win_dns_zone:
+        name: "{{ reverse_zone }}"
+        replication: forest
+        type: primary
+        state: present
+
+    - name: 🔗 PTR - Add PTR record for AD Server (Identity-01)
+      ansible.windows.win_dns_record:
+        name: "10"
+        zone: "{{ reverse_zone }}"
+        type: "PTR"
+        value: "identity-01.{{ ad.domain_FQDN }}."
+        state: present
+
+    - name: 🔗 FORWARDERS - Point AD DNS to UniFi Router
+      ansible.windows.win_shell: |
+        Set-DnsServerForwarder -IPAddress "{{ unifi_router }}" -PassThru
+      register: forwarder_status
+
+    - name: 🛠️ FIX - Set DNS Server to listen on IPv4 only (Resolves 'Server UnKnown')
+      ansible.windows.win_shell: |
+        $DNSConfig = Get-DnsServerSetting -All
+        Set-DnsServerSetting -ListeningIPAddress 192.168.199.10
+      ignore_errors: true
+
+    - name: 📂 INFRA - Sync Physical Hardware to AD DNS
+      ansible.windows.win_dns_record:
+        name: "{{ item.name }}"
+        zone: "{{ ad.domain_FQDN }}"
+        type: "A"
+        value: "{{ item.ip }}"
+        state: present
+      loop:
+        - { name: "sms-1", ip: "192.168.199.4" }
+        - { name: "nuc-1", ip: "192.168.199.1" }
+        - { name: "nuc-2", ip: "192.168.199.2" }
+        - { name: "nuc-3", ip: "192.168.199.3" }
+        - { name: "lpt-1", ip: "192.168.199.5" }
+
+    - name: 📂 INFRA - Sync Physical Hardware PTR Records
+      ansible.windows.win_dns_record:
+        name: "{{ item.ip.split('.')[-1] }}"
+        zone: "{{ reverse_zone }}"
+        type: "PTR"
+        value: "{{ item.name }}.{{ ad.domain_FQDN }}."
+        state: present
+      loop:
+        - { name: "sms-1", ip: "192.168.199.4" }
+        - { name: "nuc-1", ip: "192.168.199.1" }
+        - { name: "nuc-2", ip: "192.168.199.2" }
+        - { name: "nuc-3", ip: "192.168.199.3" }
+        - { name: "lpt-1", ip: "192.168.199.5" }
+
+    - name: 📂 OKD - Create OKD DNS Records (Preparation for Phase 4)
+      ansible.windows.win_dns_record:
+        name: "{{ item.name }}"
+        zone: "{{ ad.domain_FQDN }}"
+        type: "A"
+        value: "{{ item.value }}"
+        state: present
+      loop:
+        - { name: "api.okd", value: "192.168.199.21" }     # Point API to Master 01
+        - { name: "api-int.okd", value: "192.168.199.20" } # Point API-INT to Bootstrap (Critical for initial boot)
+        - { name: "*.apps.okd", value: "192.168.199.21" }  # Point Wildcard to Master 01
+        - { name: "okd-bootstrap", value: "192.168.199.20" }
+        - { name: "okd-master-01", value: "192.168.199.21" }
+        - { name: "okd-master-02", value: "192.168.199.22" }
+        - { name: "okd-master-03", value: "192.168.199.23" }
+
+    - name: 📂 OKD - Create OKD PTR Records
+      ansible.windows.win_dns_record:
+        name: "{{ item.split('.')[-1] }}"
+        zone: "{{ reverse_zone }}"
+        type: "PTR"
+        value: "{{ name }}.{{ ad.domain_FQDN }}."
+        state: present
+      loop:
+        - "192.168.199.20"
+        - "192.168.199.21"
+        - "192.168.199.22"
+        - "192.168.199.23"
+      vars:
+        name: "{{ 'okd-bootstrap' if item == '192.168.199.20' else 'okd-master-0' + (index|string) }}"
+      loop_control:
+        index_var: index
+
+    - name: 🔄 RESTART - Restart DNS Service to apply changes
+      ansible.windows.win_service:
+        name: DNS
+        state: restarted
+
+    - name: 🔓 STATUS - DNS Fix Complete
+      ansible.builtin.debug:
+        msg: "DNS PTR records fixed. Forwarders set to UniFi. OKD records pre-staged."

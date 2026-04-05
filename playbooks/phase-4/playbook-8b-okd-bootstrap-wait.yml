@@ -1,0 +1,67 @@
+---
+- name: Phase 4.1b - Wait for OKD Bootstrap & Verify Health
+  hosts: lpt-1
+  gather_facts: false
+  vars:
+    install_dir: "/opt/okd-cluster"
+  
+  tasks:
+    - name: ⏳ WAIT - Monitoring OKD Bootstrap Process (This may take 30+ minutes)
+      ansible.builtin.command:
+        cmd: "openshift-install wait-for bootstrap-complete --dir={{ install_dir }} --log-level=info"
+      become: true
+      register: bootstrap_result
+      async: 3600 # 1 hour timeout
+      poll: 30    # Check every 30 seconds
+
+    - name: 🔓 STATUS - Bootstrap Complete
+      ansible.builtin.debug:
+        msg: "Bootstrap node has finished its task. The Control Plane is now self-hosted."
+
+    - name: 🗑️ CLEANUP - Destroy Bootstrap VM on SMS-1
+      ansible.builtin.shell: |
+        virsh destroy okd-bootstrap || true
+        virsh undefine okd-bootstrap --remove-all-storage || true
+      delegate_to: sms-1
+      become: true
+
+    - name: 🔑 CONFIG - Set up Kubeconfig for local spark
+      ansible.builtin.file:
+        path: "~/.kube"
+        state: directory
+        mode: '0700'
+
+    - name: 📄 CONFIG - Copy Kubeconfig to User Home
+      ansible.builtin.copy:
+        src: "{{ install_dir }}/auth/kubeconfig"
+        dest: "~/.kube/config"
+        mode: '0600'
+        remote_src: true
+      become: true
+
+    - name: 📝 CSR - Automatically approve pending CSRs
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ install_dir }}/auth/kubeconfig
+        oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs -r oc adm certificate approve
+      become: true
+      register: csr_approval
+      until: "csr_approval is success"
+      retries: 30
+      delay: 30
+
+    - name: 🚀 VERIFY - Check Master Node Status
+      ansible.builtin.command:
+        cmd: "oc get nodes"
+      environment:
+        KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+      register: node_status
+      until: "node_status.stdout.count('Ready') >= 3"
+      retries: 20
+      delay: 60
+
+    - name: 🔓 STATUS - OKD Control Plane is Ready
+      ansible.builtin.debug:
+        msg: |
+          OKD Masters are UP and Ready!
+          Console URL: {{ lookup('shell', 'oc get route -n openshift-console console -o jsonpath="{.spec.host}"') }}
+          Credentials: cat {{ install_dir }}/auth/kubeadmin-password

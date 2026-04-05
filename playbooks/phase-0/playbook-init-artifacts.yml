@@ -1,0 +1,42 @@
+---
+- name: Phase 0.1 - Artifact Initialization
+  hosts: localhost
+  gather_facts: false
+  vars:
+    artifact_dir: "../../playbooks/artifacts"
+    fcos_iso_url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/41.20240215.3.0/x86_64/fedora-coreos-41.20240215.3.0-live.x86_64.iso" # Example URL, updated to latest stable
+  
+  tasks:
+    - name: 📁 DIRECTORY - Ensure artifacts folder exists
+      ansible.builtin.file:
+        path: "{{ artifact_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: 🔐 CHECK - Verify RHEL Pull Secret
+      ansible.builtin.stat:
+        path: "../../RHEL_pull_secret.json"
+      register: pull_secret_stat
+
+    - name: 🛑 ALERT - Instructions for Pull Secret
+      ansible.builtin.fail:
+        msg: |
+          ERROR: RHEL_pull_secret.json not found in the root of the repo!
+          1. Go to https://console.redhat.com/openshift/install/pull-secret
+          2. Download the 'JSON' pull secret.
+          3. Save it as 'RHEL_pull_secret.json' in the root directory: {{ playbook_dir }}/../../
+      when: not pull_secret_stat.stat.exists
+
+    - name: 💿 DOWNLOAD - Fedora CoreOS ISO
+      ansible.builtin.get_url:
+        url: "{{ fcos_iso_url }}"
+        dest: "{{ artifact_dir }}/fedora-coreos-latest-live.x86_64.iso"
+        mode: "0644"
+      register: iso_download
+      until: iso_download is success
+      retries: 3
+      delay: 10
+
+    - name: 🔓 STATUS - Artifacts Ready
+      ansible.builtin.debug:
+        msg: "All artifacts initialized. You are ready to proceed with bootstrapping."

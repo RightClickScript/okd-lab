@@ -25,8 +25,10 @@
         chart_version: "{{ awx_operator_version }}"
         kubeconfig: "{{ kubeconfig }}"
         values:
-          # Fix for the deprecated GCR image
-          rbac_proxy_image: "quay.io/brancz/kube-rbac-proxy:v0.15.0"
+          # Correct hierarchy for the official community chart
+          operator-controller-containers:
+            kube-rbac-proxy:
+              image: "quay.io/brancz/kube-rbac-proxy:v0.15.0"
           # Ensure we don't try to use non-existent pull secrets
           image_pull_secrets: []
         wait: true
@@ -72,7 +74,7 @@
                       pathType: Prefix
                       backend:
                         service:
-                          name: awx-service # This is the standard AWX web service name
+                          name: awx-service
                           port:
                             number: 80
 

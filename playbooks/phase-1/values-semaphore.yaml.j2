@@ -1,0 +1,68 @@
+# playbooks/phase-1/values-semaphore.yaml.j2
+# Custom values for Semaphore UI deployment on K3s (lpt-1)
+
+image:
+  repository: semaphoreui/semaphore
+  tag: "v2.16.47"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 3000
+
+# Persistence for Task Outputs & Artifacts (Workdir)
+persistence:
+  enabled: true
+  size: 5Gi
+  hostPath: "/mnt/data/semaphore/data"
+
+# ServiceAccount for cluster management
+serviceAccount:
+  create: true
+  name: semaphore
+
+# Database Configuration
+database:
+  type: postgres
+  host: postgresql
+  port: 5432
+  name: semaphore
+  username: semaphore
+  password: "{{ ansible_password }}"
+  usernameFromSecret: false
+  options:
+    sslmode: disable
+
+# Admin User Setup
+admin:
+  create: true
+  username: admin
+  password: "{{ ansible_password }}"
+  fullname: Admin
+  email: admin@homelab.local
+
+# External Dependency: PostgreSQL
+postgresql:
+  enabled: true
+  fullnameOverride: postgresql
+  auth:
+    database: semaphore
+    username: semaphore
+    password: "{{ ansible_password }}"
+  primary:
+    persistence:
+      enabled: true
+      hostPath: "/mnt/data/semaphore/postgres"
+
+# Optional: Add an init container to wait for PostgreSQL
+extraInitContainers:
+  - name: wait-for-db
+    image: alpine:latest
+    command:
+      - sh
+      - -c
+      - |
+        until nc -zvw1 postgresql 5432; do
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done

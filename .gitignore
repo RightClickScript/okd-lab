@@ -166,6 +166,12 @@ cython_debug/
 .devcontainer/commandhistory/
 RHEL_pull_secret.json
 
+# Infrastructure Lab Secrets (Keep out of GitHub!)
+.semaphore_deploy_key
+.semaphore_deploy_key.pub
+.lpt1_kubeconfig
+old_inventory.yml
+
 # Playbook Artifacts & Secrets
 playbooks/artifacts/**/*
 !playbooks/artifacts/.gitkeep

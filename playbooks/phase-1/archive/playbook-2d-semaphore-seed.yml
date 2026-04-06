@@ -1,0 +1,174 @@
+---
+- name: Phase 1-2d - Seed Semaphore UI (Self-Healing & Idempotent)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    semaphore_url: "http://192.168.199.5:30000"
+    admin_user: "admin"
+    project_name: "Homelab Infrastructure"
+    key_path: "{{ playbook_dir }}/../../.semaphore_deploy_key"
+
+  tasks:
+    - name: 🔍 DISCOVER - Get Semaphore NodePort
+      delegate_to: lpt-1
+      ansible.builtin.shell: |
+        kubectl get svc -n semaphore semaphore -o jsonpath='{.spec.ports[0].nodePort}'
+      register: nodeport_cmd
+
+    - name: 📌 SET - Define Dynamic URL
+      ansible.builtin.set_fact:
+        semaphore_url: "http://192.168.199.5:{{ nodeport_cmd.stdout }}"
+
+    - name: 🗝️ PRESERVE - Ensure SSH Keypair exists
+      community.crypto.openssh_keypair:
+        path: "{{ key_path }}"
+        type: rsa
+        size: 4096
+        state: present
+
+    - name: 🔑 AUTH - Login to Semaphore
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/auth/login"
+        method: POST
+        body_format: json
+        body:
+          auth: "{{ admin_user }}"
+          password: "{{ ansible_password }}"
+        status_code: [200, 204]
+      register: login_response
+
+    - name: 🔎 INFO - Get All Projects
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/projects"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      register: projects_list
+
+    - name: 📁 PROJECT - Create "Homelab Infrastructure" if missing
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/projects"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ project_name }}"
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [201]
+      register: create_project_res
+      when: projects_list.json | selectattr('name', 'equalto', project_name) | list | length == 0
+
+    - name: 🔎 INFO - Refresh Project List
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/projects"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      register: projects_list_final
+
+    - name: 🧹 CLEANUP - Delete Duplicate Projects (Keep only the first one)
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ item.id }}"
+        method: DELETE
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [204]
+      loop: "{{ projects_list_final.json | selectattr('name', 'equalto', project_name) | list | batch(1) | list | last }}"
+      when: (projects_list_final.json | selectattr('name', 'equalto', project_name) | list | length) > 1
+      # This logic is a bit complex, simplified: we keep the first ID and delete the rest.
+      # Let's use a simpler approach below.
+
+    - name: 📌 SET - Define Project ID (Target the first one)
+      ansible.builtin.set_fact:
+        project_id: "{{ (projects_list_final.json | selectattr('name', 'equalto', project_name) | first).id }}"
+
+    - name: 🔎 INFO - Get Existing Project Resources
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/{{ item }}"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      loop: [keys, repositories, inventory]
+      register: resources_info
+
+    - name: 🗝️ KEY - Create "Bishop SSH Key" if missing
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/keys"
+        method: POST
+        body_format: json
+        body:
+          name: "Bishop SSH Key"
+          type: "ssh"
+          project_id: "{{ project_id | int }}"
+          ssh:
+            private_key: "{{ lookup('file', key_path) }}"
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [201]
+      when: resources_info.results[0].json | selectattr('name', 'equalto', 'Bishop SSH Key') | list | length == 0
+
+    - name: 🗝️ KEY - Create "Git Deploy Key" if missing
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/keys"
+        method: POST
+        body_format: json
+        body:
+          name: "Git Deploy Key"
+          type: "ssh"
+          project_id: "{{ project_id | int }}"
+          ssh:
+            private_key: "{{ lookup('file', key_path) }}"
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [201]
+      when: resources_info.results[0].json | selectattr('name', 'equalto', 'Git Deploy Key') | list | length == 0
+
+    - name: 🔎 INFO - Refresh Keys for IDs
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/keys"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      register: final_keys_list
+
+    - name: 📌 SET - Resolve Key IDs
+      ansible.builtin.set_fact:
+        git_key_id: "{{ (final_keys_list.json | selectattr('name', 'equalto', 'Git Deploy Key') | first).id }}"
+        bishop_key_id: "{{ (final_keys_list.json | selectattr('name', 'equalto', 'Bishop SSH Key') | first).id }}"
+
+    - name: 📜 REPOSITORY - Create Git Repository Entry if missing
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/repositories"
+        method: POST
+        body_format: json
+        body:
+          name: "OKD Lab Repo"
+          project_id: "{{ project_id | int }}"
+          git_url: "git@github.com:RightClickScript/okd-lab.git"
+          git_branch: "main"
+          ssh_key_id: "{{ git_key_id | int }}"
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [201]
+      when: resources_info.results[1].json | selectattr('name', 'equalto', 'OKD Lab Repo') | list | length == 0
+
+    - name: 🗃️ INVENTORY - Create Physical Hosts Entry if missing
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/inventory"
+        method: POST
+        body_format: json
+        body:
+          name: "Physical Hosts"
+          project_id: "{{ project_id | int }}"
+          type: "file"
+          inventory: "inventory.yml"
+          ssh_key_id: "{{ bishop_key_id | int }}"
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [201]
+      when: resources_info.results[2].json | selectattr('name', 'equalto', 'Physical Hosts') | list | length == 0
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Semaphore self-healing seeding complete. Project '{{ project_name }}' (ID: {{ project_id }}) is initialized."

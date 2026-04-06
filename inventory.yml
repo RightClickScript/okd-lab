@@ -59,10 +59,13 @@ all:
       zfs_mount_point: "/mnt/data"
       distribution_root: "/mnt/data/distribution"
 
-    # OKD 4.20 & SCOS Artifacts
+    # OKD 4.19 & SCOS Artifacts
     artifacts:
+      git_repo_url: "https://github.com/RightClickScript/okd-lab.git"
       scos_iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-live-iso.x86_64.iso"
-      okd_release_image: "quay.io/okd/scos-release:4.20.0-okd-scos.0"
+      okd_release_image: "quay.io/okd/scos-release:4.19.0-okd-scos.19"
+      okd_client_url: "https://github.com/okd-project/okd/releases/download/4.19.0-okd-scos.19/openshift-client-linux-4.19.0-okd-scos.19.tar.gz"
+      okd_install_url: "https://github.com/okd-project/okd/releases/download/4.19.0-okd-scos.19/openshift-install-linux-4.19.0-okd-scos.19.tar.gz"
   hosts:
     localhost:
       ansible_connection: local

@@ -1,0 +1,53 @@
+---
+- name: Phase 1 - Cleanup Semaphore Projects
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    semaphore_url: "http://192.168.199.5:30000"
+    admin_user: "admin"
+    project_name: "Homelab Infrastructure"
+
+  tasks:
+    - name: 🔍 DISCOVER - Get Semaphore NodePort
+      delegate_to: lpt-1
+      ansible.builtin.shell: |
+        kubectl get svc -n semaphore semaphore -o jsonpath='{.spec.ports[0].nodePort}'
+      register: nodeport_cmd
+
+    - name: 📌 SET - Define Dynamic URL
+      ansible.builtin.set_fact:
+        semaphore_url: "http://192.168.199.5:{{ nodeport_cmd.stdout }}"
+
+    - name: 🔑 AUTH - Login
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/auth/login"
+        method: POST
+        body_format: json
+        body:
+          auth: "{{ admin_user }}"
+          password: "{{ ansible_password }}"
+        status_code: [200, 204]
+      register: login_response
+
+    - name: 🔎 INFO - Get All Projects
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/projects"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      register: projects_list
+
+    - name: 🧹 CLEANUP - Delete ALL "Homelab Infrastructure" projects
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ item.id }}"
+        method: DELETE
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [204]
+      loop: "{{ projects_list.json | selectattr('name', 'equalto', project_name) | list }}"
+      when: projects_list.json | length > 0
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "All duplicate projects removed. You can now run the 2d-seed playbook for a fresh start."

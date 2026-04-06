@@ -1,0 +1,120 @@
+---
+- name: Phase 1-3 - Deploy and Seed Semaphore Factory (Fully Linked & SSL Fix)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    kubeconfig_path: "{{ playbook_dir }}/../../.lpt1_kubeconfig"
+    key_path: "{{ playbook_dir }}/../../.semaphore_deploy_key"
+    project_name: "Homelab Infrastructure"
+    admin_user: "admin"
+    semaphore_url: "http://192.168.199.50"
+
+    templates:
+      - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
+      - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
+      - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }
+      - { name: "Phase 2: SMS-1 Prep (Part 1 - Networking)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part1.yml" }
+      - { name: "Phase 2: SMS-1 Prep (Part 2 - KVM & Storage)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part2.yml" }
+      - { name: "Phase 2: NUC Prep (WOL & FCOS Hub)", playbook: "playbooks/phase-2/playbook-4-nuc-prep.yml" }
+      - { name: "Phase 3: Identity (Windows AD/DNS)", playbook: "playbooks/phase-3/playbook-5-identity.yml" }
+      - { name: "Phase 3: Morpheus Appliance", playbook: "playbooks/phase-3/playbook-7-morpheus.yml" }
+      - { name: "Phase 4: OKD Control Plane (Masters)", playbook: "playbooks/phase-4/playbook-8-okd-masters.yml" }
+      - { name: "Phase 4: OKD Workers (NUCs)", playbook: "playbooks/phase-4/playbook-9-okd-workers.yml" }
+
+  tasks:
+    - name: 🔑 AUTH - Login
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/auth/login"
+        method: POST
+        body_format: json
+        body: { auth: "{{ admin_user }}", password: "{{ ansible_password }}" }
+        headers: { Host: "semaphore.homelab.local" }
+        status_code: [200, 204]
+      register: login_response
+
+    - name: 🔎 INFO - Get Project ID
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/projects"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+          Host: "semaphore.homelab.local"
+      register: plist
+
+    - name: 📌 SET - Define Project ID
+      ansible.builtin.set_fact:
+        pid: "{{ (plist.json | selectattr('name', 'equalto', project_name) | first).id }}"
+
+    - name: 🌍 ENV - Create/Update Lab Environment (SSL Bypass)
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/environment"
+        method: POST
+        body_format: json
+        body:
+          name: "Lab Global Environment"
+          project_id: "{{ pid | int }}"
+          json: |
+            {
+              "ANSIBLE_GALAXY_IGNORE_CERTS": "True",
+              "PYTHONHTTPSVERIFY": "0",
+              "ANSIBLE_HOST_KEY_CHECKING": "False"
+            }
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+          Host: "semaphore.homelab.local"
+        status_code: [201, 400]
+
+    - name: 🔄 REFRESH - Get Final Resource IDs
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/{{ item }}"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+          Host: "semaphore.homelab.local"
+      loop: [repositories, inventory, templates, environment, keys]
+      register: resources
+
+    - name: 🧹 CLEANUP - Delete ALL Existing Templates
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/templates/{{ item.id }}"
+        method: DELETE
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+          Host: "semaphore.homelab.local"
+        status_code: [204]
+      loop: "{{ resources.results[2].json }}"
+      when: resources.results[2].json | length > 0
+
+    - name: 📌 SET - Resolve Final IDs
+      ansible.builtin.set_fact:
+        final_repo_id: "{{ (resources.results[0].json | selectattr('name', 'equalto', 'OKD Lab Repo') | first).id }}"
+        final_inv_id: "{{ (resources.results[1].json | selectattr('name', 'equalto', 'Physical Hosts') | first).id }}"
+        final_env_id: "{{ (resources.results[3].json | selectattr('name', 'equalto', 'Lab Global Environment') | first).id }}"
+        final_ssh_id: "{{ (resources.results[4].json | selectattr('name', 'equalto', 'Bishop SSH Key') | first).id }}"
+
+    - name: 🚀 TEMPLATES - Seed Fresh Task Buttons (Fully Linked)
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/templates"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          project_id: "{{ pid | int }}"
+          inventory_id: "{{ final_inv_id | int }}"
+          repository_id: "{{ final_repo_id | int }}"
+          environment_id: "{{ final_env_id | int }}"
+          ssh_key_id: "{{ final_ssh_id | int }}" # Explicit link to avoid "Manual Save"
+          playbook: "{{ item.playbook }}"
+          app: "ansible"
+          arguments: "[\"-vv\"]"
+          allow_override_args_in_task: true
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+          Host: "semaphore.homelab.local"
+        status_code: [201]
+      loop: "{{ templates }}"
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Semaphore buttons have been WIPED and RECREATED with FULL LINKS and SSL BYPASS active. REFRESH and run!"

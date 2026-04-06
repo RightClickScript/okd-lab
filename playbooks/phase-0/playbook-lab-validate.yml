@@ -1,0 +1,17 @@
+---
+- name: Phase 0 - Lab Connectivity Validation
+  hosts: lpt-1, sms-1
+  gather_facts: false
+
+  tasks:
+    - name: 🔍 PING - Test Ansible connectivity
+      ansible.builtin.ping:
+
+    - name: 📋 INFO - Gather basic system info
+      ansible.builtin.setup:
+        gather_subset:
+          - 'min'
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Connectivity to {{ inventory_hostname }} is VERIFIED."

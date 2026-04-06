@@ -1,0 +1,68 @@
+---
+- name: Phase 1 - Deployment Simple Network Test
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    kubeconfig_path: "{{ playbook_dir }}/../../.lpt1_kubeconfig"
+
+  tasks:
+    - name: 🚀 DEPLOY - Simple Nginx Pod and LoadBalancer Service
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          - apiVersion: v1
+            kind: Pod
+            metadata:
+              name: net-test
+              namespace: default
+              labels:
+                app: net-test
+            spec:
+              containers:
+                - name: nginx
+                  image: nginx:alpine
+                  ports:
+                    - containerPort: 80
+          - apiVersion: v1
+            kind: Service
+            metadata:
+              name: net-test-svc
+              namespace: default
+              annotations:
+                metallb.universe.tf/loadBalancerIPs: "192.168.199.50"
+            spec:
+              selector:
+                app: net-test
+              type: LoadBalancer
+              ports:
+                - protocol: TCP
+                  port: 80
+                  targetPort: 80
+
+    - name: ⏳ WAIT - Wait for Nginx to be Running
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Pod
+        name: net-test
+        namespace: default
+      register: pod_info
+      until: pod_info.resources[0].status.phase == "Running"
+      retries: 10
+      delay: 5
+
+    - name: ⏳ WAIT - Wait for LoadBalancer IP
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Service
+        name: net-test-svc
+        namespace: default
+      register: svc_info
+      until: svc_info.resources[0].status.loadBalancer.ingress is defined
+      retries: 10
+      delay: 5
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Net-Test is LIVE at http://192.168.199.50. Please check in your browser!"

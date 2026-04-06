@@ -1,0 +1,25 @@
+---
+- name: Phase 1-1d - Fix K3s ServiceLB Conflict
+  hosts: local_spark
+  become: true
+
+  tasks:
+    - name: 🛠️ CONFIG - Disable ServiceLB in K3s Service
+      ansible.builtin.replace:
+        path: /etc/systemd/system/k3s.service
+        regexp: "'--node-ip'"
+        replace: "'--disable-servicelb' \\\n        '--node-ip'"
+
+    - name: 🔄 RESTART - Reload Systemd and Restart K3s
+      ansible.builtin.systemd:
+        daemon_reload: true
+        name: k3s
+        state: restarted
+
+    - name: ⏳ WAIT - Wait for K3s to be ready
+      ansible.builtin.shell: |
+        kubectl get nodes
+      register: nodes
+      until: '"Ready" in nodes.stdout'
+      retries: 15
+      delay: 5

@@ -1,0 +1,66 @@
+---
+- name: Phase 1-1c - Configure Global Ingresses
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    kubeconfig_path: "{{ playbook_dir }}/../../.lpt1_kubeconfig"
+    domain: "homelab.local"
+    # The Physical IP of lpt-1 for the Dist Hub routing
+    lpt1_ip: "192.168.199.5"
+
+  tasks:
+    - name: 📁 DIST HUB - Create Service and Endpoints for External Nginx (8080)
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          - apiVersion: v1
+            kind: Service
+            metadata:
+              name: dist-hub-external
+              namespace: default
+            spec:
+              ports:
+                - protocol: TCP
+                  port: 8080
+                  targetPort: 8080
+          - apiVersion: v1
+            kind: Endpoints
+            metadata:
+              name: dist-hub-external
+              namespace: default
+            subsets:
+              - addresses:
+                  - ip: "{{ lpt1_ip }}"
+                ports:
+                  - port: 8080
+
+    - name: 🌐 INGRESS - Create Global Ingress Rules
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: factory-ingress
+            namespace: "{{ item.namespace }}"
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: web
+          spec:
+            rules:
+              - host: "{{ item.name }}.{{ domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: "{{ item.service }}"
+                          port:
+                            number: "{{ item.port }}"
+      loop:
+        - { name: "semaphore", namespace: "semaphore", service: "semaphore", port: 3000 }
+        - { name: "dist", namespace: "default", service: "dist-hub-external", port: 8080 }
+        # Vault and AWX will be added as they are deployed

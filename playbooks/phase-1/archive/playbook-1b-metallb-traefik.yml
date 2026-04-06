@@ -1,0 +1,37 @@
+---
+- name: Phase 1-1b - Deploy Simplified Traefik Ingress
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    kubeconfig_path: "{{ playbook_dir }}/../../.lpt1_kubeconfig"
+    vip_address: "192.168.199.50"
+
+  tasks:
+    - name: 📦 HELM - Add Traefik Repo
+      kubernetes.core.helm_repository:
+        name: traefik
+        repo_url: "https://traefik.github.io/charts"
+
+    - name: 🚀 DEPLOY - Install Traefik with Fixed VIP
+      kubernetes.core.helm:
+        name: traefik
+        chart_ref: traefik/traefik
+        release_namespace: "kube-system"
+        kubeconfig: "{{ kubeconfig_path }}"
+        values:
+          service:
+            type: LoadBalancer
+            spec:
+              loadBalancerIP: "{{ vip_address }}" # Explicitly request our working VIP
+          # Disable complex features for now to ensure stability
+          ingressRoute:
+            dashboard:
+              enabled: true
+          persistence:
+            enabled: false
+        wait: true
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Traefik is re-installed on {{ vip_address }}. Routing is ready."

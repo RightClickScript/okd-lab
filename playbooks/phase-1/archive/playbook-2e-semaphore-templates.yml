@@ -1,0 +1,106 @@
+---
+- name: Phase 1-2e - Seed Semaphore Task Templates
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    semaphore_url: "http://192.168.199.5:30000"
+    admin_user: "admin"
+    project_name: "Homelab Infrastructure"
+
+    # Template Definitions
+    templates:
+      - name: "Phase 2: SMS-1 Prep (Part 1 - Networking)"
+        playbook: "playbooks/phase-2/playbook-3-amd-prep-part1.yml"
+      - name: "Phase 2: SMS-1 Prep (Part 2 - KVM & Storage)"
+        playbook: "playbooks/phase-2/playbook-3-amd-prep-part2.yml"
+      - name: "Phase 2: NUC Prep (WOL & FCOS Hub)"
+        playbook: "playbooks/phase-2/playbook-4-nuc-prep.yml"
+      - name: "Phase 3: Identity (Windows AD/DNS)"
+        playbook: "playbooks/phase-3/playbook-5-identity.yml"
+      - name: "Phase 3: Morpheus Appliance"
+        playbook: "playbooks/phase-3/playbook-7-morpheus.yml"
+      - name: "Phase 4: OKD Control Plane (Masters)"
+        playbook: "playbooks/phase-4/playbook-8-okd-masters.yml"
+      - name: "Phase 4: OKD Workers (NUCs)"
+        playbook: "playbooks/phase-4/playbook-9-okd-workers.yml"
+
+  tasks:
+    - name: 🔍 DISCOVER - Get Semaphore NodePort
+      delegate_to: lpt-1
+      ansible.builtin.shell: |
+        kubectl get svc -n semaphore semaphore -o jsonpath='{.spec.ports[0].nodePort}'
+      register: nodeport_cmd
+
+    - name: 📌 SET - Define Dynamic URL
+      ansible.builtin.set_fact:
+        semaphore_url: "http://192.168.199.5:{{ nodeport_cmd.stdout }}"
+
+    - name: 🔑 AUTH - Login
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/auth/login"
+        method: POST
+        body_format: json
+        body:
+          auth: "{{ admin_user }}"
+          password: "{{ ansible_password }}"
+        status_code: [200, 204]
+      register: login_response
+
+    - name: 🔎 INFO - Get Project ID
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/projects"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      register: projects_list
+
+    - name: 📌 SET - Target Project ID
+      ansible.builtin.set_fact:
+        project_id: "{{ (projects_list.json | selectattr('name', 'equalto', project_name) | last).id }}"
+
+    - name: 🔎 INFO - Get Repository and Inventory IDs
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/{{ item }}"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      loop: [repositories, inventory]
+      register: resources_info
+
+    - name: 📌 SET - Resolve Resource IDs
+      ansible.builtin.set_fact:
+        repo_id: "{{ (resources_info.results[0].json | selectattr('name', 'equalto', 'OKD Lab Repo') | first).id }}"
+        inv_id: "{{ (resources_info.results[1].json | selectattr('name', 'equalto', 'Physical Hosts') | first).id }}"
+
+    - name: 🔎 INFO - Get Existing Templates (Idempotency)
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/templates"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+      register: existing_templates
+
+    - name: 🚀 CREATE - Seed Task Templates
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ project_id }}/templates"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          project_id: "{{ project_id | int }}"
+          inventory_id: "{{ inv_id | int }}"
+          repository_id: "{{ repo_id | int }}"
+          playbook: "{{ item.playbook }}"
+          app: "ansible"
+          arguments: "[\"-vv\"]"
+          allow_override_args_in_task: true
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+        status_code: [201]
+      loop: "{{ templates }}"
+      when: existing_templates.json | selectattr('name', 'equalto', item.name) | list | length == 0
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Semaphore Task Templates seeded with SMS-1 naming. You can now start Phase 2 from the UI!"

@@ -1,54 +1,12 @@
 ---
-- name: Phase 1 - Container Host Prep (Laptop)
+- name: Phase 1-1 - Consolidated Container Host Prep (Laptop)
   hosts: local_spark
   become: true
   gather_facts: true
 
-  vars:
-    # Standard networking vars
-    mgmt_ip: "192.168.199.5"
-    mgmt_vlan: 199
-    vm_vlan: 198
-
   tasks:
-    - name: 💾 BACKUP & MIGRATE - Preserve Semaphore Data (Snap to /opt)
+    - name: 🛑 SANITIZATION - Remove LXD/LXC
       block:
-        - name: Check if Semaphore Snap volumes exist
-          ansible.builtin.stat:
-            path: /var/snap/docker/common/var-lib-docker/volumes/bishop_semaphore_config/_data
-          register: semaphore_exists
-
-        - name: Create permanent Semaphore directories
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: directory
-            mode: '0755'
-          loop:
-            - /opt/semaphore/config
-            - /opt/semaphore/data
-            - /opt/semaphore/postgres
-          when: semaphore_exists.stat.exists
-
-        - name: Copy Semaphore Config (from Snap volumes)
-          ansible.builtin.shell: |
-            cp -r /var/snap/docker/common/var-lib-docker/volumes/bishop_semaphore_config/_data/* /opt/semaphore/config/ || true
-          args:
-            creates: /opt/semaphore/config/config.json
-          when: semaphore_exists.stat.exists
-
-        - name: Copy Semaphore DB (from Snap volumes)
-          ansible.builtin.shell: |
-            cp -r /var/snap/docker/common/var-lib-docker/volumes/bishop_semaphore_postgres/_data/* /opt/semaphore/postgres/ || true
-          args:
-            creates: /opt/semaphore/postgres/PG_VERSION
-          when: semaphore_exists.stat.exists
-
-    - name: 🛑 SANITIZATION - Remove LXD/LXC & Snap Docker
-      block:
-        - name: Purge Docker Snap (After backup!)
-          ansible.builtin.shell: snap remove --purge docker
-          ignore_errors: true
-
         - name: Gather service facts
           ansible.builtin.service_facts:
 
@@ -57,121 +15,51 @@
             name: "{{ item }}"
             state: stopped
             enabled: false
-          loop:
-            - lxd.service
-            - lxd-agent.service
-            - lxcfs.service
+          loop: [lxd.service, lxd-agent.service, lxcfs.service]
           when: "ansible_facts.services[item] is defined"
           ignore_errors: true
 
-        - name: Remove LXD snap package
-          community.general.snap:
-            name: lxd
-            state: absent
-
-        - name: Purge apt-based LXD/LXC packages
+        - name: Purge LXD/LXC Artifacts
           ansible.builtin.apt:
             name: ["lxd", "lxd-client", "lxc", "lxcfs"]
             state: absent
             purge: true
 
-        - name: Remove remaining LXD/LXC artifacts
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: absent
-          loop:
-            - /var/lib/lxd
-            - /var/snap/lxd
-            - /var/lib/lxcfs
-
-        - name: Remove LXD network bridge
-          ansible.builtin.shell: ip link delete lxdbr0 || true
-          changed_when: false
-          ignore_errors: true
-
-    - name: 🌐 NETWORKING - Standardize with Netplan
+    - name: 🛠️ KERNEL - Configure Modules and Sysctl
       block:
-        - name: Create backup directory for netplan
-          ansible.builtin.file:
-            path: /etc/netplan/backup
-            state: directory
-            mode: "0755"
-
-        - name: Backup existing Netplan files
-          ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
-          args:
-            creates: /etc/netplan/backup/backup_done
-          changed_when: false
-
-        - name: Apply Infrastructure Netplan (bond0 + VLANs)
+        - name: Create k8s.conf for module loading
           ansible.builtin.copy:
-            dest: /etc/netplan/99-morpheus-infra.yaml
-            mode: "0644"
+            dest: /etc/modules-load.d/k8s.conf
             content: |
-              network:
-                version: 2
-                ethernets:
-                  {{ physical_iface }}:
-                    dhcp4: no
-                bonds:
-                  bond0:
-                    interfaces: [ "{{ physical_iface }}" ]
-                    parameters:
-                      mode: active-backup
-                    addresses: [ "{{ mgmt_ip }}/24" ]
-                    routes:
-                      - to: default
-                        via: 192.168.199.254
-                    nameservers:
-                      addresses: [ 192.168.1.1 ]
-                      search: [ homelab.local ]
-                vlans:
-                  vlan{{ vm_vlan }}:
-                    id: {{ vm_vlan }}
-                    link: bond0
-                    dhcp4: yes
+              overlay
+              br_netfilter
+            mode: '0644'
 
-        - name: Apply netplan configuration
-          ansible.builtin.command: netplan apply
+        - name: Load modules immediately
+          community.general.modprobe:
+            name: "{{ item }}"
+            state: present
+          loop: [overlay, br_netfilter]
 
-        - name: Wait for host to become reachable again after network changes
-          ansible.builtin.wait_for_connection:
-            delay: 10
-            timeout: 300
+        - name: Create 99-kubernetes-k8s.conf for sysctl
+          ansible.builtin.copy:
+            dest: /etc/sysctl.d/99-kubernetes-k8s.conf
+            content: |
+              net.bridge.bridge-nf-call-ip6tables = 1
+              net.bridge.bridge-nf-call-iptables = 1
+              net.ipv4.ip_forward = 1
+              net.ipv4.ip_nonlocal_bind = 1
+            mode: '0644'
 
-    - name: 💻 ENVIRONMENT - Configure .bashrc
-      ansible.builtin.blockinfile:
-        path: "/home/bishop/.bashrc"
-        marker: "# {mark} ANSIBLE MANAGED BLOCK - INFRA FACTORY"
-        block: |
-          # Automatically navigate to project
-          cd /home/bishop/source/okd-lab || true
-          # Automatically activate Ansible virtual environment
-          if [ -d ".venv" ]; then
-            source .venv/bin/activate
-          fi
-          # Export K3s Kubeconfig
-          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    - name: 📦 SOFTWARE - Install Docker & K3s
+        - name: Apply sysctl changes
+          ansible.builtin.command: sysctl --system
+          changed_when: true
+
+    - name: 📦 SOFTWARE - Install Docker and K3s
       block:
-        - name: Install dependencies for Docker & WOL
+        - name: Install dependencies
           ansible.builtin.apt:
-            name: [apt-transport-https, ca-certificates, curl, software-properties-common, gnupg, wakeonlan]
-            state: present
-
-        - name: Add Docker GPG key
-          ansible.builtin.apt_key:
-            url: https://download.docker.com/linux/ubuntu/gpg
-            state: present
-
-        - name: Add Docker repository
-          ansible.builtin.apt_repository:
-            repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
-            state: present
-
-        - name: Install Docker Engine
-          ansible.builtin.apt:
-            name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+            name: [curl, wakeonlan, docker.io]
             state: present
 
         - name: Install K3s (Local Factory)
@@ -179,6 +67,28 @@
             curl -sfL https://get.k3s.io | sh -s - \
               --write-kubeconfig-mode 644 \
               --disable traefik \
-              --node-ip {{ mgmt_ip }}
+              --disable servicelb \
+              --node-ip {{ ansible_host }}
           args:
             creates: /usr/local/bin/k3s
+
+    - name: 📁 STRUCTURE - Create Persistence Directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0777'
+        owner: 1001
+        group: 1001
+      loop:
+        - /mnt/data/distribution
+        - /mnt/data/semaphore/postgres
+        - /mnt/data/semaphore/data
+        - /mnt/data/semaphore/config
+
+    - name: 💻 ENVIRONMENT - Configure .bashrc
+      ansible.builtin.blockinfile:
+        path: "/home/bishop/.bashrc"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - INFRA FACTORY"
+        block: |
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          cd /home/bishop/ansible || true

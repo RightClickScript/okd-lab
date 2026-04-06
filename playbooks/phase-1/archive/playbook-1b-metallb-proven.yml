@@ -1,0 +1,71 @@
+---
+- name: Phase 1-1b - Deploy MetalLB v0.14.9 (Proven Manifests)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    kubeconfig_path: "{{ playbook_dir }}/../../.lpt1_kubeconfig"
+    metallb_version: "v0.14.9"
+    metallb_pool_start: "192.168.199.50"
+    metallb_pool_end: "192.168.199.60"
+
+  tasks:
+    - name: 📁 NAMESPACE - Create metallb-system
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        name: metallb-system
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: 🚀 DEPLOY - Apply MetalLB Manifests (v0.14.9)
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        src: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/config/manifests/metallb-native.yaml"
+
+    - name: ⏳ WAIT - Wait for Controller to be ready
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Pod
+        namespace: metallb-system
+        label_selectors:
+          - component=controller
+      register: controller_pods
+      until: 
+        - controller_pods.resources | length > 0
+        - controller_pods.resources[0].status.phase == "Running"
+      retries: 30
+      delay: 5
+
+    - name: 📝 CONFIG - Create IPAddressPool
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: main-pool
+            namespace: metallb-system
+          spec:
+            addresses:
+              - "{{ metallb_pool_start }}-{{ metallb_pool_end }}"
+
+    - name: 📝 CONFIG - Create L2Advertisement (No interface restriction)
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: default
+            namespace: metallb-system
+          spec:
+            ipAddressPools:
+              - main-pool
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "MetalLB {{ metallb_version }} installed. Please test ping to 192.168.199.50."

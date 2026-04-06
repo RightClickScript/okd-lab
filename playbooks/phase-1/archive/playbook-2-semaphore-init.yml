@@ -1,0 +1,48 @@
+---
+- name: Phase 1-2 - Deploy Semaphore UI (Official Helm)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # Use the local kubeconfig we fetched from lpt-1
+    kubeconfig_path: "{{ playbook_dir }}/../../.lpt1_kubeconfig"
+    namespace: "semaphore"
+    # ZFS Paths on lpt-1
+    zfs_root: "/mnt/data/semaphore"
+    ansible_host_lpt1: "192.168.199.5"
+
+  tasks:
+    - name: 📁 PREP - Ensure Persistence Folders exist on lpt-1
+      delegate_to: lpt-1
+      become: true
+      ansible.builtin.file:
+        path: "{{ zfs_root }}/{{ item }}"
+        state: directory
+        mode: '0777' # Relaxed for initial container sync
+      loop: [postgres, data, config]
+
+    - name: 📦 HELM - Add Semaphore Repo
+      kubernetes.core.helm_repository:
+        name: semaphoreui
+        repo_url: "https://semaphoreui.github.io/charts"
+
+    - name: 📝 CONFIG - Render Semaphore Values
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/values-semaphore.yaml.j2"
+        dest: "{{ playbook_dir }}/values-semaphore.yaml"
+        mode: '0644'
+
+    - name: 🚀 DEPLOY - Install Semaphore via Helm
+      kubernetes.core.helm:
+        name: semaphore
+        chart_ref: semaphoreui/semaphore
+        release_namespace: "{{ namespace }}"
+        create_namespace: true
+        kubeconfig: "{{ kubeconfig_path }}"
+        values_files:
+          - "{{ playbook_dir }}/values-semaphore.yaml"
+        wait: true
+
+    - name: 🔗 ACCESS - Output URL
+      ansible.builtin.debug:
+        msg: "Semaphore is now active at http://{{ ansible_host_lpt1 }}:30000"

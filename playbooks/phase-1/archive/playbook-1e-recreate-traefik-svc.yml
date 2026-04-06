@@ -1,0 +1,41 @@
+---
+- name: Phase 1-1e - Recreate Traefik Service
+  hosts: local_spark
+  become: true
+
+  tasks:
+    - name: 📝 APPLY - Recreate Traefik LoadBalancer Service
+      ansible.builtin.shell: |
+        kubectl apply -f - <<EOF
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: traefik
+          namespace: kube-system
+          labels:
+            app.kubernetes.io/instance: traefik-kube-system
+            app.kubernetes.io/name: traefik
+        spec:
+          selector:
+            app.kubernetes.io/name: traefik
+          type: LoadBalancer
+          ports:
+            - name: web
+              port: 80
+              targetPort: web
+            - name: websecure
+              port: 443
+              targetPort: websecure
+        EOF
+
+    - name: ⏳ WAIT - Wait for External IP
+      ansible.builtin.shell: |
+        kubectl get svc -n kube-system traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      register: vip
+      until: vip.stdout != ""
+      retries: 20
+      delay: 5
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "Traefik Service restored! VIP: {{ vip.stdout }}"

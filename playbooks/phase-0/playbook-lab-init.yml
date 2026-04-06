@@ -76,7 +76,7 @@
           failed_when: false
           changed_when: false
 
-        - name: Wipe disk and create ZPool (DANGER: Destructive)
+        - name: "Wipe disk and create ZPool (DANGER: Destructive)"
           ansible.builtin.shell: |
             # Release any existing locks or mounts
             umount {{ data_disk }}* || true
@@ -167,17 +167,45 @@
         mode: '0644'
       when: lookup('ansible.builtin.fileglob', '../../playbooks/artifacts/bin/morpheus-appliance.deb') != []
 
-    - name: 📥 DOWNLOAD - Extract OKD 4.20 Release Tools
-      block:
-        - name: Pull OKD Release Image
-          ansible.builtin.command: "docker pull {{ artifacts.okd_release_image }}"
+    - name: 🔍 CHECK - OKD Tools existence
+      ansible.builtin.stat:
+        path: "{{ lab_init.distribution_root }}/bin/oc"
+      register: okd_tools_stat
 
-        - name: Extract Tools (oc, openshift-install)
-          ansible.builtin.shell: |
-            docker run --rm -v {{ lab_init.distribution_root }}/bin:/output {{ artifacts.okd_release_image }} cp /usr/bin/oc /output/
-            docker run --rm -v {{ lab_init.distribution_root }}/bin:/output {{ artifacts.okd_release_image }} cp /usr/bin/openshift-install /output/
-          args:
-            creates: "{{ lab_init.distribution_root }}/bin/oc"
+    - name: 📥 DOWNLOAD - Fetch OKD 4.19.0-okd-scos.19 Release Tools
+      block:
+        - name: Download OKD Client
+          ansible.builtin.get_url:
+            url: "{{ artifacts.okd_client_url }}"
+            dest: "/tmp/oc.tar.gz"
+            mode: '0644'
+
+        - name: Download OKD Installer
+          ansible.builtin.get_url:
+            url: "{{ artifacts.okd_install_url }}"
+            dest: "/tmp/openshift-install.tar.gz"
+            mode: '0644'
+
+        - name: Extract oc binary
+          ansible.builtin.unarchive:
+            src: "/tmp/oc.tar.gz"
+            dest: "{{ lab_init.distribution_root }}/bin/"
+            remote_src: yes
+            include: ["oc"]
+
+        - name: Extract openshift-install binary
+          ansible.builtin.unarchive:
+            src: "/tmp/openshift-install.tar.gz"
+            dest: "{{ lab_init.distribution_root }}/bin/"
+            remote_src: yes
+            include: ["openshift-install"]
+
+        - name: Cleanup temp files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: ["/tmp/oc.tar.gz", "/tmp/openshift-install.tar.gz"]
+      when: not okd_tools_stat.stat.exists
 
     - name: 🔑 PULL SECRET - Upload to Distribution Hub
       ansible.builtin.copy:
@@ -189,11 +217,6 @@
   hosts: lpt-1
   become: true
   tasks:
-    - name: 🚀 BOOTSTRAP - Run Local Bootstrap Script
-      ansible.builtin.shell: |
-        curl -sSL https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/configure_manually.sh | bash
-      ignore_errors: true # Replace with actual bootstrap logic if local file is missing
-      
     - name: Ensure bishop is in docker group
       ansible.builtin.user:
         name: bishop

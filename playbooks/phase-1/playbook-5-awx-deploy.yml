@@ -1,0 +1,69 @@
+---
+- name: Phase 1-5 - Deploy Ansible AWX (via Ingress)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    awx_namespace: "awx"
+    awx_operator_version: "2.19.1" # Example version
+
+  tasks:
+    - name: 📦 HELM - Add AWX Operator Repo
+      kubernetes.core.helm_repository:
+        name: awx-operator
+        repo_url: "https://ansible.github.io/awx-operator/"
+
+    - name: 🚀 DEPLOY - Install AWX Operator
+      kubernetes.core.helm:
+        name: awx-operator
+        chart_ref: awx-operator/awx-operator
+        release_namespace: "{{ awx_namespace }}"
+        create_namespace: true
+        chart_version: "{{ awx_operator_version }}"
+        wait: true
+
+    - name: 📝 CONFIG - Deploy AWX Instance
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: awx.ansible.com/v1beta1
+          kind: AWX
+          metadata:
+            name: awx
+            namespace: "{{ awx_namespace }}"
+          spec:
+            service_type: ClusterIP
+            ingress_type: none # We will handle ingress manually below
+            postgres_storage_class: local-path
+            web_resource_requirements:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+
+    - name: 🌐 INGRESS - Create AWX Ingress Rule
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: awx-ingress
+            namespace: "{{ awx_namespace }}"
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: web
+          spec:
+            rules:
+              - host: "awx.homelab.local"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: awx-service
+                          port:
+                            number: 80
+
+    - name: 🎉 FINISH - Success Message
+      ansible.builtin.debug:
+        msg: "AWX is deploying at http://awx.homelab.local. Note: It may take 5-10 mins for the instance to initialize."

@@ -7,7 +7,7 @@
   vars:
     awx_namespace: "awx"
     # Stable mid-2024 version
-    awx_operator_version: "2.19.1"
+    awx_operator_version: "3.2.1"
     kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 
   tasks:

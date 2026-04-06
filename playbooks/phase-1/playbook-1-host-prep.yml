@@ -74,7 +74,8 @@
               --write-kubeconfig-mode 644 \
               --disable traefik \
               --disable servicelb \
-              --node-ip {{ ansible_host }}
+              --node-ip {{ ansible_host }} \
+              --flannel-iface br0
           args:
             creates: /usr/local/bin/k3s
 

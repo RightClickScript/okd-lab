@@ -1,5 +1,5 @@
 ---
-- name: Phase 1-3 - Deploy and Seed Semaphore Factory (Fully Linked & SSL Fix)
+- name: Phase 1-3 - Deploy and Seed Semaphore Factory (Total Idempotency)
   hosts: localhost
   gather_facts: false
 
@@ -46,7 +46,61 @@
       ansible.builtin.set_fact:
         pid: "{{ (plist.json | selectattr('name', 'equalto', project_name) | first).id }}"
 
-    - name: 🌍 ENV - Create/Update Lab Environment (SSL Bypass)
+    - name: 🔄 REFRESH - Get Resource IDs (Discovery)
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/{{ item }}"
+        method: GET
+        headers:
+          Cookie: "{{ login_response.cookies_string }}"
+          Host: "semaphore.homelab.local"
+      loop: [keys, environment, repositories, inventory, templates]
+      register: resources
+
+    # --- DUPLICATE CLEANUP ---
+    - name: 🧹 CLEANUP - Keys
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/keys/{{ item.id }}"
+        method: DELETE
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
+        status_code: [204]
+      loop: "{{ (resources.results[0].json | selectattr('name', 'in', ['Bishop SSH Key', 'Git Deploy Key']) | list)[2:] }}"
+      when: resources.results[0].json | length > 2
+
+    - name: 🧹 CLEANUP - Environments
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/environment/{{ item.id }}"
+        method: DELETE
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
+        status_code: [204]
+      loop: "{{ (resources.results[1].json | selectattr('name', 'equalto', 'Lab Global Environment') | list)[1:] }}"
+      when: resources.results[1].json | length > 1
+
+    - name: 🧹 CLEANUP - Templates (Wipe buttons)
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/templates/{{ item.id }}"
+        method: DELETE
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
+        status_code: [204]
+      loop: "{{ resources.results[4].json }}"
+      when: resources.results[4].json | length > 0
+
+    # --- SEEDING (Missing Only) ---
+    - name: 🗝️ KEYS - Seed SSH Keys
+      ansible.builtin.uri:
+        url: "{{ semaphore_url }}/api/project/{{ pid }}/keys"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ item }}"
+          type: "ssh"
+          project_id: "{{ pid | int }}"
+          ssh: { private_key: "{{ lookup('file', key_path) }}" }
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
+        status_code: [201]
+      loop: ["Bishop SSH Key", "Git Deploy Key"]
+      when: (resources.results[0].json | selectattr('name', 'equalto', item) | list | length) == 0
+
+    - name: 🌍 ENV - Create Lab Environment
       ansible.builtin.uri:
         url: "{{ semaphore_url }}/api/project/{{ pid }}/environment"
         method: POST
@@ -55,45 +109,28 @@
           name: "Lab Global Environment"
           project_id: "{{ pid | int }}"
           json: |
-            {
-              "ANSIBLE_GALAXY_IGNORE_CERTS": "True",
-              "PYTHONHTTPSVERIFY": "0",
-              "ANSIBLE_HOST_KEY_CHECKING": "False"
-            }
-        headers:
-          Cookie: "{{ login_response.cookies_string }}"
-          Host: "semaphore.homelab.local"
-        status_code: [201, 400]
+            { "ANSIBLE_GALAXY_IGNORE_CERTS": "True", "PYTHONHTTPSVERIFY": "0", "ANSIBLE_HOST_KEY_CHECKING": "False" }
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
+        status_code: [201]
+      when: (resources.results[1].json | selectattr('name', 'equalto', 'Lab Global Environment') | list | length) == 0
 
-    - name: 🔄 REFRESH - Get Final Resource IDs
+    # --- FINAL SYNC ---
+    - name: 🔄 REFRESH - Final Resource Map
       ansible.builtin.uri:
         url: "{{ semaphore_url }}/api/project/{{ pid }}/{{ item }}"
         method: GET
-        headers:
-          Cookie: "{{ login_response.cookies_string }}"
-          Host: "semaphore.homelab.local"
-      loop: [repositories, inventory, templates, environment, keys]
-      register: resources
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
+      loop: [keys, repositories, inventory, environment]
+      register: final_map
 
-    - name: 🧹 CLEANUP - Delete ALL Existing Templates
-      ansible.builtin.uri:
-        url: "{{ semaphore_url }}/api/project/{{ pid }}/templates/{{ item.id }}"
-        method: DELETE
-        headers:
-          Cookie: "{{ login_response.cookies_string }}"
-          Host: "semaphore.homelab.local"
-        status_code: [204]
-      loop: "{{ resources.results[2].json }}"
-      when: resources.results[2].json | length > 0
-
-    - name: 📌 SET - Resolve Final IDs
+    - name: 📌 SET - Define Final IDs
       ansible.builtin.set_fact:
-        final_repo_id: "{{ (resources.results[0].json | selectattr('name', 'equalto', 'OKD Lab Repo') | first).id }}"
-        final_inv_id: "{{ (resources.results[1].json | selectattr('name', 'equalto', 'Physical Hosts') | first).id }}"
-        final_env_id: "{{ (resources.results[3].json | selectattr('name', 'equalto', 'Lab Global Environment') | first).id }}"
-        final_ssh_id: "{{ (resources.results[4].json | selectattr('name', 'equalto', 'Bishop SSH Key') | first).id }}"
+        f_repo_id: "{{ (final_map.results[1].json | selectattr('name', 'equalto', 'OKD Lab Repo') | first).id }}"
+        f_inv_id: "{{ (final_map.results[2].json | selectattr('name', 'equalto', 'Physical Hosts') | first).id }}"
+        f_env_id: "{{ (final_map.results[3].json | selectattr('name', 'equalto', 'Lab Global Environment') | first).id }}"
+        f_ssh_id: "{{ (final_map.results[0].json | selectattr('name', 'equalto', 'Bishop SSH Key') | first).id }}"
 
-    - name: 🚀 TEMPLATES - Seed Fresh Task Buttons (Fully Linked)
+    - name: 🚀 TEMPLATES - Seed Fresh Task Buttons
       ansible.builtin.uri:
         url: "{{ semaphore_url }}/api/project/{{ pid }}/templates"
         method: POST
@@ -101,20 +138,18 @@
         body:
           name: "{{ item.name }}"
           project_id: "{{ pid | int }}"
-          inventory_id: "{{ final_inv_id | int }}"
-          repository_id: "{{ final_repo_id | int }}"
-          environment_id: "{{ final_env_id | int }}"
-          ssh_key_id: "{{ final_ssh_id | int }}" # Explicit link to avoid "Manual Save"
+          inventory_id: "{{ f_inv_id | int }}"
+          repository_id: "{{ f_repo_id | int }}"
+          environment_id: "{{ f_env_id | int }}"
+          ssh_key_id: "{{ f_ssh_id | int }}"
           playbook: "{{ item.playbook }}"
           app: "ansible"
           arguments: "[\"-vv\"]"
           allow_override_args_in_task: true
-        headers:
-          Cookie: "{{ login_response.cookies_string }}"
-          Host: "semaphore.homelab.local"
+        headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
         status_code: [201]
       loop: "{{ templates }}"
 
     - name: 🎉 FINISH - Success Message
       ansible.builtin.debug:
-        msg: "Semaphore buttons have been WIPED and RECREATED with FULL LINKS and SSL BYPASS active. REFRESH and run!"
+        msg: "Semaphore is now perfectly clean and automated. No manual cleanup needed ever again."

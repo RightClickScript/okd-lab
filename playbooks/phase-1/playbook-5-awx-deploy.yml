@@ -13,7 +13,7 @@
     - name: 📦 HELM - Add AWX Operator Repo
       kubernetes.core.helm_repository:
         name: awx-operator
-        repo_url: "https://ansible.github.io/awx-operator/"
+        repo_url: "https://ansible-community.github.io/awx-operator-helm/"
 
     - name: 🚀 DEPLOY - Install AWX Operator
       kubernetes.core.helm:
@@ -21,7 +21,7 @@
         chart_ref: awx-operator/awx-operator
         release_namespace: "{{ awx_namespace }}"
         create_namespace: true
-        chart_version: "{{ awx_operator_version }}"
+        chart_version: "2.19.1"
         kubeconfig: "{{ kubeconfig }}"
         wait: true
 

@@ -1,11 +1,13 @@
 ---
 - name: Phase 1-4 - Deploy HashiCorp Vault (via Ingress)
-  hosts: localhost
+  hosts: lpt-1
+  become: true
   gather_facts: false
 
   vars:
     vault_namespace: "vault"
     vault_version: "0.28.1"
+    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 
   tasks:
     - name: 📦 HELM - Add HashiCorp Repo
@@ -20,6 +22,7 @@
         release_namespace: "{{ vault_namespace }}"
         create_namespace: true
         chart_version: "{{ vault_version }}"
+        kubeconfig: "{{ kubeconfig }}"
         values:
           server:
             dataStorage:
@@ -34,6 +37,7 @@
 
     - name: 🌐 INGRESS - Create Vault Ingress Rule
       kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
         state: present
         definition:
           apiVersion: networking.k8s.io/v1

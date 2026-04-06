@@ -1,11 +1,13 @@
 ---
 - name: Phase 1-5 - Deploy Ansible AWX (via Ingress)
-  hosts: localhost
+  hosts: lpt-1
+  become: true
   gather_facts: false
 
   vars:
     awx_namespace: "awx"
-    awx_operator_version: "2.19.1" # Example version
+    awx_operator_version: "2.19.1"
+    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 
   tasks:
     - name: 📦 HELM - Add AWX Operator Repo
@@ -20,10 +22,12 @@
         release_namespace: "{{ awx_namespace }}"
         create_namespace: true
         chart_version: "{{ awx_operator_version }}"
+        kubeconfig: "{{ kubeconfig }}"
         wait: true
 
     - name: 📝 CONFIG - Deploy AWX Instance
       kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
         state: present
         definition:
           apiVersion: awx.ansible.com/v1beta1
@@ -33,7 +37,7 @@
             namespace: "{{ awx_namespace }}"
           spec:
             service_type: ClusterIP
-            ingress_type: none # We will handle ingress manually below
+            ingress_type: none
             postgres_storage_class: local-path
             web_resource_requirements:
               requests:
@@ -42,6 +46,7 @@
 
     - name: 🌐 INGRESS - Create AWX Ingress Rule
       kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
         state: present
         definition:
           apiVersion: networking.k8s.io/v1

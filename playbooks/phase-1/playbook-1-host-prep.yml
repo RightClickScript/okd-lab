@@ -59,7 +59,7 @@
       block:
         - name: Install dependencies
           ansible.builtin.apt:
-            name: [curl, wakeonlan, docker.io, python3-pip, python3-kubernetes, python3-yaml]
+            name: [curl, wakeonlan, docker.io, python3-pip, python3-kubernetes, python3-yaml, ansible]
             state: present
 
         - name: Install Helm Binary
@@ -78,6 +78,20 @@
               --flannel-iface br0
           args:
             creates: /usr/local/bin/k3s
+
+        - name: 📦 ANSIBLE - Install Required Collections on Host
+          community.general.ansible_galaxy_install:
+            type: collection
+            name: "{{ item }}"
+          loop:
+            - community.general
+            - ansible.posix
+            - community.docker
+            - community.libvirt
+            - kubernetes.core
+            - ansible.windows
+            - microsoft.ad
+            - community.windows
 
     - name: 📁 STRUCTURE - Create Persistence Directories
       ansible.builtin.file:

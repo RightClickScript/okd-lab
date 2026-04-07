@@ -1,5 +1,5 @@
 ---
-- name: Phase 2.2 - AMD Epyc Hypervisor & Storage
+- name: Phase 2.2 - AMD Epyc Hypervisor & Storage (Consolidated)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -19,7 +19,6 @@
           - virtinst
           - virt-manager
           - ovmf
-          - python3-lxml
           - cockpit
           - cockpit-machines
           - zfsutils-linux
@@ -95,13 +94,6 @@
         executable: /bin/bash
       changed_when: true
 
-    - name: 🌐 NETWORKING - Verify Libvirt State
-      ansible.builtin.shell: |
-        virsh net-list --all
-        virsh pool-list --all
-      register: virsh_status
-      changed_when: false
-
     - name: 🔓 STATUS - Ready for VMs
       ansible.builtin.debug:
-        msg: "AMD Epyc is now fully prepared with ZFS NVMe storage and Bridged networking."
+        msg: "AMD Epyc is now fully prepared with ZFS NVMe storage and Bridged networking (Lesson Applied)."

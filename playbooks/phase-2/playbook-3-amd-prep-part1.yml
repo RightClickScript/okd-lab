@@ -1,14 +1,8 @@
 ---
-- name: Phase 2.1 - AMD Epyc Sanitization & Networking
+- name: Phase 2.1 - AMD Epyc Sanitization & Networking (Consolidated)
   hosts: management_plane
   become: true
   gather_facts: true
-
-  vars:
-    # Standard networking vars (aligned with GEMINI.md)
-    mgmt_ip: "192.168.199.4"
-    vm_vlan: 198
-    # physical_iface is now pulled from inventory.yml
 
   tasks:
     - name: 🛑 SANITIZATION - Remove LXD/LXC
@@ -21,88 +15,91 @@
             name: "{{ item }}"
             state: stopped
             enabled: false
-          loop:
-            - lxd.service
-            - lxd-agent.service
-            - lxcfs.service
+          loop: [lxd.service, lxd-agent.service, lxcfs.service]
           when: "ansible_facts.services[item] is defined"
           ignore_errors: true
 
-        - name: Purge LXD/LXC packages
+        - name: Purge LXD/LXC Artifacts
           ansible.builtin.apt:
             name: ["lxd", "lxd-client", "lxc", "lxcfs"]
             state: absent
             purge: true
 
-        - name: Purge LXD snap package
-          ansible.builtin.shell: snap remove --purge lxd
-          ignore_errors: true
+    - name: 📦 DEPENDENCIES - Install Bridge, Virtualization & Cockpit UI
+      ansible.builtin.apt:
+        name: 
+          - bridge-utils
+          - ifupdown
+          - python3-libvirt
+          - python3-lxml
+          - python3-yaml
+          - python3-pip
+          - cockpit
+          - cockpit-machines
+        state: present
 
-        - name: Unmount active LXD/LXC mount points
-          ansible.builtin.shell: |
-            for mnt in $(mount | grep -E 'lxd|lxc' | awk '{print $3}'); do
-              umount -l "$mnt" || true
-            done
-          ignore_errors: true
-
-        - name: Remove remaining LXD/LXC artifacts
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: absent
-          loop:
-            - /var/lib/lxd
-            - /var/snap/lxd
-            - /var/lib/lxcfs
-          ignore_errors: true
-
-    - name: 🌐 NETWORKING - Standardize with Netplan
+    - name: 🌐 NETWORKING - Apply Standardized Netplan (br0 + bond0)
       block:
-        - name: Create backup directory for netplan
+        - name: Create backup directory
           ansible.builtin.file:
             path: /etc/netplan/backup
             state: directory
             mode: "0755"
 
-        - name: Backup existing Netplan files
-          ansible.builtin.shell: mv /etc/netplan/*.yaml /etc/netplan/backup/ || true
+        - name: Backup existing configs
+          ansible.builtin.shell: "mv /etc/netplan/*.yaml /etc/netplan/backup/ || true"
           args:
             creates: /etc/netplan/backup/backup_done
           changed_when: false
 
-        - name: Apply Infrastructure Netplan (bond0 + VLANs)
+        - name: Generate Netplan (br0 over bond0)
           ansible.builtin.copy:
-            dest: /etc/netplan/99-morpheus-infra.yaml
+            dest: /etc/netplan/99-infra-factory.yaml
             mode: "0644"
             content: |
               network:
                 version: 2
+                renderer: networkd
                 ethernets:
                   {{ physical_iface }}:
                     dhcp4: no
+                    optional: true
                 bonds:
                   bond0:
                     interfaces: [ "{{ physical_iface }}" ]
                     parameters:
                       mode: active-backup
-                    addresses: [ "{{ mgmt_ip }}/24" ]
+                      mii-monitor-interval: 100
+                    optional: true
+                bridges:
+                  br0:
+                    interfaces: [ bond0 ]
+                    addresses: [ "{{ ansible_host }}/24" ]
                     routes:
                       - to: default
-                        via: 192.168.199.254
+                        via: {{ network.mgmt_gateway }}
                     nameservers:
-                      addresses: [ 192.168.1.1 ]
-                      search: [ homelab.local ]
+                      addresses: [ {{ network.primary_dns }} ]
+                      search: {{ network.search_domains }}
+                    parameters:
+                      stp: false
+                    dhcp4: no
                 vlans:
-                  vlan{{ vm_vlan }}:
-                    id: {{ vm_vlan }}
-                    link: bond0
+                  vlan{{ network.vlan198_id }}:
+                    id: {{ network.network.vlan198_id | default(198) }}
+                    link: br0
                     dhcp4: yes
 
-        - name: Apply netplan configuration
+        - name: Apply netplan
           ansible.builtin.command: netplan apply
           async: 10
           poll: 0
 
-        - name: Wait for host to become reachable again
+        - name: Wait for reconnect
           ansible.builtin.wait_for_connection:
             delay: 5
             timeout: 60
+
+    - name: 🔓 STATUS - Success Message
+      ansible.builtin.debug:
+        msg: "SMS-1 Networking is standardized with br0 over bond0 and Libvirt dependencies installed."

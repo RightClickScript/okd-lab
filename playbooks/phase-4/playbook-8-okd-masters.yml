@@ -119,31 +119,28 @@
 
   vars:
     vm_root: "/mnt/data/vms"
-    local_iso_path: "{{ vm_root }}/scos-live.x86_64.iso"
+    scos_iso_url: "http://192.168.199.5:8080/iso/scos-live.x86_64.iso"
 
   tasks:
-    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (CD-ROM + SMBIOS)
+    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (Location + RootFS)
       ansible.builtin.shell: |
-        # Destroy existing VM if it exists
+        # Destroy existing VM
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
-        
-        # Create disk
-        qemu-img create -f qcow2 {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
         
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
-          --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
-          --cdrom {{ local_iso_path }} \
+          --disk path={{ vm_root }}/{{ item.name }}.qcow2,size={{ item.disk }},bus=virtio \
+          --location {{ scos_iso_url }},kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --qemu-commandline="-append 'rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign coreos.inst.reboot'"
+          --extra-args "rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ scos_iso_url }}"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -154,4 +151,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are now booting from CD-ROM with SMBIOS injected args. No more PXE rootfs errors!"
+        msg: "OKD Masters are now booting via HTTP Location with explicit RootFS. Monitor via Cockpit console."

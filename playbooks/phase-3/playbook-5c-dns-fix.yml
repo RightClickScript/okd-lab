@@ -28,7 +28,7 @@
         Set-DnsServerForwarder -IPAddress "{{ unifi_router }}" -PassThru
       register: forwarder_status
 
-    - name: 🛠️ FIX - Set DNS Server to listen on IPv4 only (Resolves 'Server UnKnown')
+    - name: 🛠️ FIX - Set DNS Server to listen on IPv4 only
       ansible.windows.win_shell: |
         $DNSConfig = Get-DnsServerSetting -All
         Set-DnsServerSetting -ListeningIPAddress 192.168.199.10
@@ -61,22 +61,30 @@
         - { name: "okd-master-02", ip: "192.168.199.22" }
         - { name: "okd-master-03", ip: "192.168.199.23" }
 
-    - name: 📂 OKD - Create API Round-Robin Records (Phase 1 Bootstrap)
+    - name: 📂 OKD - Clean Old API-INT Records
       ansible.windows.win_dns_record:
-        name: "{{ item.name }}"
+        name: "api-int.okd"
         zone: "{{ ad.domain_FQDN }}"
         type: "A"
-        value: "{{ item.ip }}"
+        state: absent
+
+    - name: 📂 OKD - Clean Old API Records
+      ansible.windows.win_dns_record:
+        name: "api.okd"
+        zone: "{{ ad.domain_FQDN }}"
+        type: "A"
+        state: absent
+
+    - name: 📂 OKD - Create API Records (Point to Bootstrap ONLY)
+      ansible.windows.win_dns_record:
+        name: "{{ item }}"
+        zone: "{{ ad.domain_FQDN }}"
+        type: "A"
+        value: "192.168.199.20"
         state: present
       loop:
-        - { name: "api.okd", ip: "192.168.199.20" }
-        - { name: "api.okd", ip: "192.168.199.21" }
-        - { name: "api.okd", ip: "192.168.199.22" }
-        - { name: "api.okd", ip: "192.168.199.23" }
-        - { name: "api-int.okd", ip: "192.168.199.20" }
-        - { name: "api-int.okd", ip: "192.168.199.21" }
-        - { name: "api-int.okd", ip: "192.168.199.22" }
-        - { name: "api-int.okd", ip: "192.168.199.23" }
+        - "api.okd"
+        - "api-int.okd"
 
     - name: 📂 OKD - Create Wildcard Apps Record
       ansible.windows.win_dns_record:
@@ -91,6 +99,6 @@
         name: DNS
         state: restarted
 
-    - name: 🔓 STATUS - DNS Ready for OKD
+    - name: 🔓 STATUS - DNS Fixed for Bootstrap
       ansible.builtin.debug:
-        msg: "DNS is live. Foundation fixes applied and OKD records are active."
+        msg: "DNS records corrected. api-int.okd now points EXCLUSIVELY to bootstrap node (.20)."

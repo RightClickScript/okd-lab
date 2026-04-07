@@ -1,5 +1,5 @@
 ---
-- name: Phase 4.1 - Generate OKD Configs and Extract Boot Files (lpt-1)
+- name: Phase 4.1 - Generate and Patch OKD Ignition (lpt-1)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -116,7 +116,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Auto-Restart Safety)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (DHCP Stability)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -151,7 +151,7 @@
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip=dhcp coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img coreos.inst.reboot"
+          --extra-args "rd.neednet=1 ip=dhcp nameserver=192.168.199.10 coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img coreos.inst.reboot"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -183,6 +183,6 @@
         - { name: "okd-master-02" }
         - { name: "okd-master-03" }
 
-    - name: 🔓 STATUS - OKD Deployment Complete
+    - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are now booting using Windows AD DNS (192.168.199.10)."
+        msg: "OKD Masters are booting via DHCP but using Windows DNS (192.168.199.10) for resolution."

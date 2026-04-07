@@ -44,10 +44,11 @@
           changed_when: true
 
         - name: Create VM Storage Dataset
-          ansible.builtin.zfs:
+          community.general.zfs:
             name: "{{ lab_init.zpool_name }}/vms"
             state: present
-            mountpoint: "{{ storage_pool_path }}"
+            extra_zfs_properties:
+              mountpoint: "{{ storage_pool_path }}"
 
     - name: 📁 STORAGE - Configure Libvirt Storage Pool
       block:

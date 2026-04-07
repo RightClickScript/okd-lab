@@ -23,10 +23,17 @@
         value: "identity-01.{{ ad.domain_FQDN }}."
         state: present
 
-    - name: 🔗 FORWARDERS - Point AD DNS to UniFi Router
+    - name: 🔗 FORWARDERS - Idempotently set Forwarder to UniFi
       ansible.windows.win_shell: |
-        Set-DnsServerForwarder -IPAddress "{{ unifi_router }}" -PassThru
-      register: forwarder_status
+        $current = Get-DnsServerForwarder -ErrorAction SilentlyContinue
+        if ($current.IPAddress -notcontains "{{ unifi_router }}") {
+            Set-DnsServerForwarder -IPAddress "{{ unifi_router }}" -Force
+            Write-Output "Changed"
+        } else {
+            Write-Output "NoChange"
+        }
+      register: forwarder_res
+      changed_when: "'Changed' in forwarder_res.stdout"
 
     - name: 🛠️ FIX - Set DNS Server to listen on IPv4 only
       ansible.windows.win_shell: |
@@ -61,21 +68,15 @@
         - { name: "okd-master-02", ip: "192.168.199.22" }
         - { name: "okd-master-03", ip: "192.168.199.23" }
 
-    - name: 📂 OKD - Clean Old API-INT Records
+    - name: 📂 OKD - Clean Old Multi-Record API Entries
       ansible.windows.win_dns_record:
-        name: "api-int.okd"
+        name: "{{ item }}"
         zone: "{{ ad.domain_FQDN }}"
         type: "A"
         state: absent
+      loop: ["api.okd", "api-int.okd"]
 
-    - name: 📂 OKD - Clean Old API Records
-      ansible.windows.win_dns_record:
-        name: "api.okd"
-        zone: "{{ ad.domain_FQDN }}"
-        type: "A"
-        state: absent
-
-    - name: 📂 OKD - Create API Records (Point to Bootstrap ONLY)
+    - name: 📂 OKD - Create API Records (Bootstrap ONLY)
       ansible.windows.win_dns_record:
         name: "{{ item }}"
         zone: "{{ ad.domain_FQDN }}"

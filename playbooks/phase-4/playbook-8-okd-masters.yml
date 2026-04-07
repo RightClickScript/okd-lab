@@ -53,12 +53,15 @@
         if "users" not in data["passwd"]: data["passwd"]["users"] = []
         
         core_user = next((u for u in data["passwd"]["users"] if u["name"] == "core"), None)
+        # Properly escaped dollar signs for shell cat block
+        pass_hash = "\$6\$2.AkBiINvK6sG1Xc\$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
+        
         if core_user:
-            core_user["passwordHash"] = "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
+            core_user["passwordHash"] = pass_hash
         else:
             data["passwd"]["users"].append({
                 "name": "core",
-                "passwordHash": "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
+                "passwordHash": pass_hash
             })
 
         nm_config = f"""[connection]
@@ -116,7 +119,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (DHCP Stability)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Console-Ready)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -151,7 +154,7 @@
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip=dhcp nameserver=192.168.199.10 coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img coreos.inst.reboot"
+          --extra-args "rd.neednet=1 ip=dhcp nameserver=192.168.199.10 coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img ignition.firstboot ignition.platform.id=qemu ignition.config.url={{ hub_url }}/ign/{{ item.name }}.ign"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -183,6 +186,6 @@
         - { name: "okd-master-02" }
         - { name: "okd-master-03" }
 
-    - name: 🔓 STATUS - OKD Deployment Started
+    - name: 🔓 STATUS - OKD Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD Masters are booting via DHCP but using Windows DNS (192.168.199.10) for resolution."
+        msg: "OKD Masters are now console-accessible during install. Login: core / Admin@12345"

@@ -1,5 +1,5 @@
 ---
-- name: Phase 2.1 - AMD Epyc Sanitization & Networking (Consolidated)
+- name: Phase 2.1 - AMD Epyc Sanitization & Networking (Lessons Applied)
   hosts: management_plane
   become: true
   gather_facts: true
@@ -38,21 +38,20 @@
           - cockpit-machines
         state: present
 
-    - name: 🌐 NETWORKING - Apply Standardized Netplan (br0 + bond0)
+    - name: 🌐 NETWORKING - Apply Standardized Netplan (br0 over bond0)
       block:
-        - name: Create backup directory
-          ansible.builtin.file:
-            path: /etc/netplan/backup
-            state: directory
-            mode: "0755"
-
-        - name: Backup existing configs
-          ansible.builtin.shell: "mv /etc/netplan/*.yaml /etc/netplan/backup/ || true"
+        - name: 🛡️ SAFETY - Deactivate existing netplans (rename to .bak)
+          ansible.builtin.shell: |
+            for f in /etc/netplan/*.yaml; do
+              if [ -f "$f" ]; then
+                mv "$f" "${f}.bak"
+              fi
+            done
           args:
-            creates: /etc/netplan/backup/backup_done
-          changed_when: false
+            executable: /bin/bash
+          changed_when: true
 
-        - name: Generate Netplan (br0 over bond0)
+        - name: Generate Infrastructure Netplan
           ansible.builtin.copy:
             dest: /etc/netplan/99-infra-factory.yaml
             mode: "0644"
@@ -70,7 +69,6 @@
                     parameters:
                       mode: active-backup
                       mii-monitor-interval: 100
-                    optional: true
                 bridges:
                   br0:
                     interfaces: [ bond0 ]
@@ -86,20 +84,20 @@
                     dhcp4: no
                 vlans:
                   vlan{{ network.vlan198_id }}:
-                    id: {{ network.network.vlan198_id | default(198) }}
+                    id: {{ network.vlan198_id }}
                     link: br0
                     dhcp4: yes
 
         - name: Apply netplan
           ansible.builtin.command: netplan apply
-          async: 10
+          async: 15
           poll: 0
 
-        - name: Wait for reconnect
+        - name: Wait for host to reconnect on br0
           ansible.builtin.wait_for_connection:
             delay: 5
             timeout: 60
 
     - name: 🔓 STATUS - Success Message
       ansible.builtin.debug:
-        msg: "SMS-1 Networking is standardized with br0 over bond0 and Libvirt dependencies installed."
+        msg: "SMS-1 Networking is standardized. Cockpit available at https://192.168.199.4:9090. Original configs saved as .bak."

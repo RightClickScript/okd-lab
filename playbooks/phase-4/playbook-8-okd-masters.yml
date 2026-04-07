@@ -119,7 +119,6 @@
 
   vars:
     vm_root: "/mnt/data/vms"
-    # CORRECTED URL: Added /iso/ path
     scos_iso_url: "http://192.168.199.5:8080/iso/scos-live.x86_64.iso"
     local_iso_path: "{{ vm_root }}/scos-live.x86_64.iso"
 
@@ -132,8 +131,12 @@
         force: false
         timeout: 600
 
-    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs
+    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (with coreos.inst)
       ansible.builtin.shell: |
+        # Destroy existing VM if it exists to allow fresh install
+        virsh destroy {{ item.name }} || true
+        virsh undefine {{ item.name }} --remove-all-storage || true
+        
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
@@ -145,7 +148,7 @@
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
-          --extra-args "rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} ignition.firstboot ignition.platform.id=qemu ignition.config.url=http://192.168.199.5:8080/ign/{{ item.name }}.ign"
+          --extra-args "rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -156,4 +159,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are deploying with FIXED ISO path and Static IPs."
+        msg: "OKD Masters are now AUTOMATICALLY installing to disk. Watch the console in Cockpit!"

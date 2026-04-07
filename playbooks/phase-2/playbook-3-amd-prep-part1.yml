@@ -1,29 +1,15 @@
 ---
-- name: Phase 2.1 - AMD Epyc Sanitization & Networking (Lessons Applied)
+- name: Phase 2.1 - AMD Epyc Sanitization & Networking (Nuke & Pave)
   hosts: management_plane
   become: true
   gather_facts: true
 
   tasks:
     - name: 🛑 SANITIZATION - Remove LXD/LXC
-      block:
-        - name: Gather service facts
-          ansible.builtin.service_facts:
-
-        - name: Stop and disable LXD/LXC services
-          ansible.builtin.systemd:
-            name: "{{ item }}"
-            state: stopped
-            enabled: false
-          loop: [lxd.service, lxd-agent.service, lxcfs.service]
-          when: "ansible_facts.services[item] is defined"
-          ignore_errors: true
-
-        - name: Purge LXD/LXC Artifacts
-          ansible.builtin.apt:
-            name: ["lxd", "lxd-client", "lxc", "lxcfs"]
-            state: absent
-            purge: true
+      ansible.builtin.apt:
+        name: ["lxd", "lxd-client", "lxc", "lxcfs"]
+        state: absent
+        purge: true
 
     - name: 📦 DEPENDENCIES - Install Bridge, Virtualization & Cockpit UI
       ansible.builtin.apt:
@@ -38,20 +24,30 @@
           - cockpit-machines
         state: present
 
-    - name: 🌐 NETWORKING - Apply Standardized Netplan (br0 over bond0)
+    - name: 🌐 NETWORKING - Rebuild Standardized Netplan
       block:
-        - name: 🛡️ SAFETY - Deactivate existing netplans (rename to .bak)
+        - name: 🛡️ SAFETY - Deactivate existing netplans
           ansible.builtin.shell: |
             for f in /etc/netplan/*.yaml; do
               if [ -f "$f" ]; then
                 mv "$f" "${f}.bak"
               fi
             done
-          args:
-            executable: /bin/bash
+          args: { executable: /bin/bash }
           changed_when: true
 
-        - name: Generate Infrastructure Netplan
+        - name: 🧹 CLEANUP - Tear down existing interfaces
+          ansible.builtin.shell: |
+            ip link set br0 down || true
+            ip link delete br0 || true
+            ip link set br198 down || true
+            ip link delete br198 || true
+            ip link delete vlan198 || true
+            ip addr flush dev bond0 || true
+          args: { executable: /bin/bash }
+          changed_when: true
+
+        - name: Generate Clean Infrastructure Netplan
           ansible.builtin.copy:
             dest: /etc/netplan/99-infra-factory.yaml
             mode: "0644"
@@ -72,19 +68,19 @@
                 bridges:
                   br0:
                     interfaces: [ bond0 ]
-                    addresses: [ "{{ ansible_host }}/24" ]
+                    addresses: [ "192.168.199.4/24" ]
                     routes:
                       - to: default
-                        via: {{ network.mgmt_gateway }}
+                        via: 192.168.199.254
                     nameservers:
-                      addresses: [ {{ network.primary_dns }} ]
-                      search: {{ network.search_domains }}
+                      addresses: [ 192.168.1.1 ]
+                      search: [ homelab.local ]
                     parameters:
                       stp: false
                     dhcp4: no
                 vlans:
-                  vlan{{ network.vlan198_id }}:
-                    id: {{ network.vlan198_id }}
+                  vlan198:
+                    id: 198
                     link: br0
                     dhcp4: yes
 
@@ -100,4 +96,4 @@
 
     - name: 🔓 STATUS - Success Message
       ansible.builtin.debug:
-        msg: "SMS-1 Networking is standardized. Cockpit available at https://192.168.199.4:9090. Original configs saved as .bak."
+        msg: "SMS-1 Networking is standardized. Cockpit available at https://192.168.199.4:9090"

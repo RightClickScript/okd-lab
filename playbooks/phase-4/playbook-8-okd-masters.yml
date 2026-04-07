@@ -68,7 +68,7 @@
         
         [ipv4]
         address1={ip}/24,{{ network.mgmt_gateway }}
-        dns={{ network.primary_dns }};
+        dns=192.168.199.10;
         dns-search={{ network.search_domains[0] }};
         method=manual
         """
@@ -185,4 +185,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD Masters have been installed and forced to 'Running' state. Cluster is self-assembling."
+        msg: "OKD Masters are now booting using Windows AD DNS (192.168.199.10)."

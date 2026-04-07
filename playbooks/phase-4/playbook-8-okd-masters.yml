@@ -14,6 +14,10 @@
       register: pull_secret_content
       changed_when: false
 
+    - name: 📌 SET - Define Pull Secret Fact
+      ansible.builtin.set_fact:
+        pull_secret: "{{ pull_secret_content.stdout | from_json | to_json }}"
+
     - name: 📁 PREP - Create Install Directory
       ansible.builtin.file:
         path: "{{ install_dir }}"

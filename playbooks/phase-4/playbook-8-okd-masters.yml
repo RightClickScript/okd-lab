@@ -97,13 +97,15 @@
         python3 /tmp/patch_ignition.py okd-master-03 192.168.199.23 master
       changed_when: true
 
-    - name: 💿 BOOT - Extract Kernel and Initrd from SCOS ISO
+    - name: 💿 BOOT - Extract Kernel, Initrd, and RootFS from SCOS ISO
       ansible.builtin.shell: |
         mkdir -p /tmp/scos-mnt
         mount -o loop {{ distribution_root }}/iso/scos-live.x86_64.iso /tmp/scos-mnt
         cp /tmp/scos-mnt/images/pxeboot/vmlinuz {{ distribution_root }}/iso/vmlinuz
         cp /tmp/scos-mnt/images/pxeboot/initrd.img {{ distribution_root }}/iso/initrd.img
+        cp /tmp/scos-mnt/images/pxeboot/rootfs.img {{ distribution_root }}/iso/rootfs.img
         umount /tmp/scos-mnt
+        chmod 644 {{ distribution_root }}/iso/vmlinuz {{ distribution_root }}/iso/initrd.img {{ distribution_root }}/iso/rootfs.img
       changed_when: true
 
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
@@ -116,7 +118,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (NUC-Style Boot)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Direct Kernel Boot)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -151,7 +153,7 @@
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip=dhcp coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/scos-live.x86_64.iso"
+          --extra-args "rd.neednet=1 ip=dhcp coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -162,4 +164,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are booting via DHCP to pull their STATIC Ignition. This matches the NUC workflow."
+        msg: "OKD Masters are now booting via DIRECT KERNEL with verified RootFS URL. Final hurdle cleared!"

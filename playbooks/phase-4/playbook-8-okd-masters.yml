@@ -49,7 +49,6 @@
         with open(file_path, 'r') as f:
             data = json.load(f)
         
-        # 1. ADD PASSWORD FOR CORE USER
         if "passwd" not in data: data["passwd"] = {}
         if "users" not in data["passwd"]: data["passwd"]["users"] = []
         
@@ -62,7 +61,6 @@
                 "passwordHash": "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
             })
 
-        # 2. INJECT NETWORKMANAGER STATIC IP CONFIG
         nm_config = f"""[connection]
         id=enp1s0
         type=ethernet
@@ -118,7 +116,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Direct Kernel Boot)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Auto-Restart Safety)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -153,7 +151,7 @@
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip=dhcp coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img"
+          --extra-args "rd.neednet=1 ip=dhcp coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img coreos.inst.reboot"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -162,6 +160,29 @@
         - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
 
-    - name: 🔓 STATUS - OKD Deployment Started
+    - name: ⏳ WAIT - Wait for installation to finish (VMs to stop)
+      ansible.builtin.shell: "virsh list --name | grep {{ item.name }}"
+      register: vm_list
+      until: vm_list.rc != 0
+      retries: 60
+      delay: 30
+      loop:
+        - { name: "okd-bootstrap" }
+        - { name: "okd-master-01" }
+        - { name: "okd-master-02" }
+        - { name: "okd-master-03" }
+      ignore_errors: true
+
+    - name: ⚡ START - Ensure VMs are Running from Disk
+      ansible.builtin.shell: "virsh start {{ item.name }}"
+      register: start_res
+      failed_when: start_res.rc != 0 and 'already active' not in start_res.stderr
+      loop:
+        - { name: "okd-bootstrap" }
+        - { name: "okd-master-01" }
+        - { name: "okd-master-02" }
+        - { name: "okd-master-03" }
+
+    - name: 🔓 STATUS - OKD Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD Masters are now booting via DIRECT KERNEL with verified RootFS URL. Final hurdle cleared!"
+        msg: "OKD Masters have been installed and forced to 'Running' state. Cluster is self-assembling."

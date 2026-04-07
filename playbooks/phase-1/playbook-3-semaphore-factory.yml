@@ -14,13 +14,15 @@
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
       - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
       - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }
-      - { name: "Phase 2: SMS-1 Prep (Part 1 - Networking)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part1.yml" }
-      - { name: "Phase 2: SMS-1 Prep (Part 2 - KVM & Storage)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part2.yml" }
-      - { name: "Phase 2: NUC Prep (WOL & FCOS Hub)", playbook: "playbooks/phase-2/playbook-4-nuc-prep.yml" }
-      - { name: "Phase 3: Identity (Windows AD/DNS)", playbook: "playbooks/phase-3/playbook-5-identity.yml" }
+      - { name: "Phase 2: SMS-1 Prep (Part 1 - Tools)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part1.yml" }
+      - { name: "Phase 2: SMS-1 Prep (Part 2 - KVM & ZFS)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part2.yml" }
+      - { name: "Phase 2: NUC Prep (Ignition Generator)", playbook: "playbooks/phase-2/playbook-4-nuc-prep.yml" }
+      - { name: "Phase 3: Identity (Deploy Windows VM)", playbook: "playbooks/phase-3/playbook-5-identity.yml" }
+      - { name: "Phase 3: Identity (Configure AD Domain)", playbook: "playbooks/phase-3/playbook-5b-ad-config.yml" }
+      - { name: "Phase 3: Identity (Fix DNS & OKD Records)", playbook: "playbooks/phase-3/playbook-5c-dns-fix.yml" }
       - { name: "Phase 3: Morpheus Appliance", playbook: "playbooks/phase-3/playbook-7-morpheus.yml" }
       - { name: "Phase 4: OKD Control Plane (Masters)", playbook: "playbooks/phase-4/playbook-8-okd-masters.yml" }
-      - { name: "Phase 4: OKD Workers (NUCs)", playbook: "playbooks/phase-4/playbook-9-okd-workers.yml" }
+      - { name: "Phase 4: OKD Workers (NUCs Join)", playbook: "playbooks/phase-4/playbook-9-okd-workers.yml" }
 
   tasks:
     - name: 🔑 AUTH - Login
@@ -152,4 +154,4 @@
 
     - name: 🎉 FINISH - Success Message
       ansible.builtin.debug:
-        msg: "Semaphore is now perfectly clean and automated. No manual cleanup needed ever again."
+        msg: "Semaphore is now fully populated with ALL Phase 3 and Phase 4 buttons. Re-run complete."

@@ -13,9 +13,16 @@
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
     # HTTP Data Source (Container Host)
     http_server: "192.168.199.5:8080"
-    distribution_root: "/mnt/data/distribution" # Aligned with Nginx root
+    distribution_root: "/mnt/data/distribution"
 
   tasks:
+    - name: 🔑 PASSWORD - Generate Hash on lpt-1
+      ansible.builtin.shell: |
+        python3 -c 'import crypt; print(crypt.crypt("{{ ansible_password }}", crypt.mksalt(crypt.METHOD_SHA512)))'
+      delegate_to: lpt-1
+      register: hashed_pass
+      changed_when: false
+
     - name: 📂 HTTP - Setup Directory on Container Host (lpt-1)
       ansible.builtin.file:
         path: "{{ distribution_root }}/morpheus"
@@ -50,7 +57,7 @@
             identity:
               hostname: {{ vm_name }}
               username: bishop
-              password: "{{ ansible_password | password_hash('sha512') }}"
+              password: "{{ hashed_pass.stdout }}"
             ssh:
               install-server: true
               allow-pw: true

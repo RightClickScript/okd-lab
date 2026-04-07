@@ -11,22 +11,26 @@
         mode: '0755'
       loop: [iso, bin, secrets]
 
-    - name: 🔐 CHECK - Verify RHEL Pull Secret
+    - name: 🔐 CHECK - Verify Red Hat Pull Secret
       ansible.builtin.stat:
-        path: "{{ playbook_dir }}/../../RHEL_pull_secret.json"
+        path: "{{ playbook_dir }}/../../playbooks/artifacts/secrets/pull_secret.json"
       register: pull_secret_stat
 
     - name: 🛑 ALERT - Instructions for Pull Secret
       ansible.builtin.fail:
-        msg: "RHEL_pull_secret.json is missing in the root!"
+        msg: "ERROR: 'playbooks/artifacts/secrets/pull_secret.json' not found!"
       when: not pull_secret_stat.stat.exists
 
     - name: 📦 SYNC - Push ALL Artifacts to Distribution Hub (lpt-1)
       ansible.builtin.command:
-        cmd: "rsync -avz --progress {{ playbook_dir }}/../../playbooks/artifacts/ lpt-1:{{ lab_init.distribution_root }}/"
+        cmd: >
+          rsync -avz --progress 
+          -e "ssh -i {{ playbook_dir }}/../../.semaphore_deploy_key -o StrictHostKeyChecking=no"
+          {{ playbook_dir }}/../../playbooks/artifacts/ 
+          bishop@{{ hostvars['lpt-1'].ansible_host }}:{{ lab_init.distribution_root }}/
       changed_when: true
       delegate_to: localhost
 
     - name: 🔓 STATUS - Artifacts Synced
       ansible.builtin.debug:
-        msg: "All ISOs, binaries, and secrets have been synchronized to the lpt-1 distribution hub."
+        msg: "All ISOs, binaries, and secrets have been synchronized to the lpt-1 distribution hub ({{ hostvars['lpt-1'].ansible_host }})."

@@ -69,3 +69,4 @@
           - "NUC-1: http://192.168.199.5:8080/ign/nuc-1.json"
           - "NUC-2: http://192.168.199.5:8080/ign/nuc-2.json"
           - "NUC-3: http://192.168.199.5:8080/ign/nuc-3.json"
+          - "Install Command example: sudo coreos-installer install /dev/nvme0n1 --ignition-url http://192.168.199.5:8080/ign/nuc-1.json --insecure-ignition"

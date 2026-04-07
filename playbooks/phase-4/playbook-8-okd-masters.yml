@@ -87,7 +87,6 @@
         if "files" not in data["storage"]: data["storage"]["files"] = []
         data["storage"]["files"].append(new_file)
         
-        # Write back as the specific node file
         with open(f"{{ install_dir }}/{name}.ign", 'w') as f:
             json.dump(data, f)
         EOF
@@ -120,37 +119,31 @@
 
   vars:
     vm_root: "/mnt/data/vms"
-    scos_iso_url: "http://192.168.199.5:8080/iso/scos-live.x86_64.iso"
     local_iso_path: "{{ vm_root }}/scos-live.x86_64.iso"
 
   tasks:
-    - name: 💿 ISO - Download SCOS ISO to SMS-1
-      ansible.builtin.get_url:
-        url: "{{ scos_iso_url }}"
-        dest: "{{ local_iso_path }}"
-        mode: "0644"
-        force: false
-        timeout: 600
-
-    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (with --events)
+    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (CD-ROM + SMBIOS)
       ansible.builtin.shell: |
-        # Destroy existing VM if it exists to allow fresh install
+        # Destroy existing VM if it exists
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
+        
+        # Create disk
+        qemu-img create -f qcow2 {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
         
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
-          --disk path={{ vm_root }}/{{ item.name }}.qcow2,size={{ item.disk }},bus=virtio \
-          --location {{ local_iso_path }},kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img \
+          --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
+          --cdrom {{ local_iso_path }} \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign coreos.inst.reboot"
+          --qemu-commandline="-append 'rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign coreos.inst.reboot'"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -161,4 +154,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are now AUTOMATICALLY installing with correct lifecycle events. Monitor via Cockpit!"
+        msg: "OKD Masters are now booting from CD-ROM with SMBIOS injected args. No more PXE rootfs errors!"

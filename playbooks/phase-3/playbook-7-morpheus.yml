@@ -5,10 +5,10 @@
   gather_facts: false
 
   vars:
-    # ISO Details - Using Local Hub
-    iso_url: "http://192.168.199.5:8080/iso/ubuntu-22.04.5-live-server-amd64.iso"
+    # ISO Details - Using Local Hub (Updated to 24.04.2)
+    iso_url: "http://192.168.199.5:8080/iso/ubuntu-24.04.2-live-server-amd64.iso"
     iso_root: "/mnt/data/vms"
-    ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.5-live-server-amd64.iso"
+    ubuntu_iso: "{{ iso_root }}/ubuntu-24.04.2-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
     # HTTP Data Source (Container Host)

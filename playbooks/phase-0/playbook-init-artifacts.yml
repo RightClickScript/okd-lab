@@ -1,42 +1,32 @@
 ---
-- name: Phase 0.1 - Artifact Initialization
+- name: Phase 0.1 - Artifact Initialization & Sync to Hub
   hosts: localhost
   gather_facts: false
-  vars:
-    artifact_dir: "../../playbooks/artifacts"
-    fcos_iso_url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/41.20240215.3.0/x86_64/fedora-coreos-41.20240215.3.0-live.x86_64.iso" # Example URL, updated to latest stable
   
   tasks:
-    - name: 📁 DIRECTORY - Ensure artifacts folder exists
+    - name: 📁 DIRECTORY - Ensure local artifact folders exist
       ansible.builtin.file:
-        path: "{{ artifact_dir }}"
+        path: "{{ playbook_dir }}/../../playbooks/artifacts/{{ item }}"
         state: directory
         mode: '0755'
+      loop: [iso, bin, secrets]
 
     - name: 🔐 CHECK - Verify RHEL Pull Secret
       ansible.builtin.stat:
-        path: "../../RHEL_pull_secret.json"
+        path: "{{ playbook_dir }}/../../RHEL_pull_secret.json"
       register: pull_secret_stat
 
     - name: 🛑 ALERT - Instructions for Pull Secret
       ansible.builtin.fail:
-        msg: |
-          ERROR: RHEL_pull_secret.json not found in the root of the repo!
-          1. Go to https://console.redhat.com/openshift/install/pull-secret
-          2. Download the 'JSON' pull secret.
-          3. Save it as 'RHEL_pull_secret.json' in the root directory: {{ playbook_dir }}/../../
+        msg: "RHEL_pull_secret.json is missing in the root!"
       when: not pull_secret_stat.stat.exists
 
-    - name: 💿 DOWNLOAD - Fedora CoreOS ISO
-      ansible.builtin.get_url:
-        url: "{{ fcos_iso_url }}"
-        dest: "{{ artifact_dir }}/fedora-coreos-latest-live.x86_64.iso"
-        mode: "0644"
-      register: iso_download
-      until: iso_download is success
-      retries: 3
-      delay: 10
+    - name: 📦 SYNC - Push ALL Artifacts to Distribution Hub (lpt-1)
+      ansible.builtin.command:
+        cmd: "rsync -avz --progress {{ playbook_dir }}/../../playbooks/artifacts/ lpt-1:{{ lab_init.distribution_root }}/"
+      changed_when: true
+      delegate_to: localhost
 
-    - name: 🔓 STATUS - Artifacts Ready
+    - name: 🔓 STATUS - Artifacts Synced
       ansible.builtin.debug:
-        msg: "All artifacts initialized. You are ready to proceed with bootstrapping."
+        msg: "All ISOs, binaries, and secrets have been synchronized to the lpt-1 distribution hub."

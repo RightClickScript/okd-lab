@@ -52,7 +52,7 @@
           --vcpus {{ dcdetails.CPU }} \
           --os-variant win2k22 \
           --disk path={{ iso_root }}/{{ vm_name }}.qcow2,bus=virtio \
-          --disk path={{ win_iso }},device=cdrom,bus=sata,readonly=on \
+          --cdrom {{ win_iso }} \
           --disk path={{ virtio_iso }},device=cdrom,bus=sata,readonly=on \
           --disk path={{ unattended_iso }},device=cdrom,bus=sata,readonly=on \
           --network bridge=br0,model=virtio \

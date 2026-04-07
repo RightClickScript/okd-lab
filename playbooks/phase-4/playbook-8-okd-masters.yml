@@ -1,215 +1,82 @@
 ---
-- name: Phase 4.1 - OKD Master Deployment (KVM UPI)
+- name: Phase 4.1 - Generate OKD Ignition (lpt-1)
   hosts: local_spark
-  gather_facts: true
+  become: true
+  gather_facts: false
+
   vars:
-    okd_version: "4.21" # Latest stable OKD 4.21
-    okd_installer_url: "https://github.com/okd-project/okd/releases/download/4.21.0-okd-scos.0/openshift-install-linux-4.21.0-okd-scos.0.tar.gz"
-    okd_client_url: "https://github.com/okd-project/okd/releases/download/4.21.0-okd-scos.0/openshift-client-linux-4.21.0-okd-scos.0.tar.gz"
     install_dir: "/opt/okd-cluster"
-    ignition_server: "http://192.168.199.5:8080"
+    distribution_root: "/mnt/data/distribution"
 
   tasks:
-    - name: 🔐 SECRET - Load Pull Secret from Repo Root
-      ansible.builtin.set_fact:
-        pull_secret: "{{ lookup('file', playbook_dir + '/../../RHEL_pull_secret.json') | from_json | to_json }}"
+    - name: 🔐 SECRET - Load Pull Secret from Hub
+      ansible.builtin.shell: "cat {{ distribution_root }}/secrets/pull_secret.json"
+      register: pull_secret_content
+      changed_when: false
 
-    - name: 📂 PREP - Create Install Directory
+    - name: 📁 PREP - Create Install Directory
       ansible.builtin.file:
         path: "{{ install_dir }}"
         state: directory
         mode: '0755'
-      become: true
-
-    - name: 📦 TOOLS - Download and Extract OKD Binaries
-      block:
-        - name: Download OKD Installer
-          ansible.builtin.get_url:
-            url: "{{ okd_installer_url }}"
-            dest: "/tmp/openshift-install.tar.gz"
-            mode: "0644"
-        - name: Download OKD Client (oc/kubectl)
-          ansible.builtin.get_url:
-            url: "{{ okd_client_url }}"
-            dest: "/tmp/openshift-client.tar.gz"
-            mode: "0644"
-        - name: Extract Binaries to /usr/local/bin
-          ansible.builtin.unarchive:
-            src: "/tmp/{{ item }}.tar.gz"
-            dest: "/usr/local/bin"
-            remote_src: true
-          loop:
-            - "openshift-install"
-            - "openshift-client"
-          become: true
 
     - name: 📄 CONFIG - Generate install-config.yaml
       ansible.builtin.template:
         src: "../../templates/okd/install-config.yaml.j2"
         dest: "{{ install_dir }}/install-config.yaml"
         mode: "0644"
-      become: true
+
+    - name: 📦 TOOLS - Ensure OKD Binaries exist on lpt-1
+      ansible.builtin.shell: |
+        if ! command -v openshift-install &> /dev/null; then
+          curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
+        fi
+      changed_when: false
 
     - name: 🔥 IGNITION - Generate Cluster Ignition Files
       ansible.builtin.command:
         cmd: "openshift-install create ignition-configs --dir={{ install_dir }}"
       args:
         creates: "{{ install_dir }}/bootstrap.ign"
-      become: true
 
-    - name: 🛠️ PATCH - Inject Static IPs into Ignition
-      ansible.builtin.shell: |
-        cat <<EOF > /tmp/patch_ignition.py
-        import json, base64, sys
-        
-        name = sys.argv[1]
-        ip = sys.argv[2]
-        file_path = f"{{ install_dir }}/{sys.argv[3]}"
-        
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-        
-        # ADD PASSWORD FOR CORE USER (Admin@12345)
-        if "passwd" not in data: data["passwd"] = {}
-        if "users" not in data["passwd"]: data["passwd"]["users"] = []
-        
-        core_user = next((u for u in data["passwd"]["users"] if u["name"] == "core"), None)
-        if core_user:
-            core_user["passwordHash"] = "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
-        else:
-            data["passwd"]["users"].append({
-                "name": "core",
-                "passwordHash": "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
-            })
-
-        # NetworkManager connection file content
-        nm_config = f"""[connection]
-        id=eth0
-        type=ethernet
-        interface-name=enp1s0
-        
-        [ipv4]
-        address1={ip}/24,192.168.199.254
-        dns=192.168.199.10;
-        dns-search=homelab.local;
-        method=manual
-        """
-        
-        new_file = {
-            "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
-            "mode": 384,
-            "contents": {
-                "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode()
-            }
-        }
-        
-        if "storage" not in data: data["storage"] = {}
-        if "files" not in data["storage"]: data["storage"]["files"] = []
-        data["storage"]["files"].append(new_file)
-        
-        with open(f"{{ install_dir }}/{name}.ign", 'w') as f:
-            json.dump(data, f)
-        EOF
-        
-        python3 /tmp/patch_ignition.py okd-bootstrap 192.168.199.20 bootstrap.ign
-        python3 /tmp/patch_ignition.py okd-master-01 192.168.199.21 master.ign
-        python3 /tmp/patch_ignition.py okd-master-02 192.168.199.22 master.ign
-        python3 /tmp/patch_ignition.py okd-master-03 192.168.199.23 master.ign
-      become: true
-
-    - name: 🛠️ CONFIG - Create Ignition ISOs for each node
-      ansible.builtin.shell: |
-        mkdir -p /tmp/ign-{{ item.name }}
-        cp {{ install_dir }}/{{ item.name }}.ign /tmp/ign-{{ item.name }}/config.ign
-        genisoimage -output /opt/ignition/{{ item.name }}-config.iso -volid "ignition" -joliet -rock /tmp/ign-{{ item.name }}/config.ign
-        rm -rf /tmp/ign-{{ item.name }}
+    - name: 📤 PUBLISH - Move Ignition to Distro Hub
+      ansible.builtin.copy:
+        src: "{{ install_dir }}/{{ item }}"
+        dest: "{{ distribution_root }}/ign/{{ item }}"
+        remote_src: true
+        mode: "0644"
+        owner: 1001
+        group: 1001
       loop:
-        - { name: "okd-bootstrap" }
-        - { name: "okd-master-01" }
-        - { name: "okd-master-02" }
-        - { name: "okd-master-03" }
-      become: true
+        - bootstrap.ign
+        - master.ign
+        - worker.ign
 
-- name: Phase 4.2 - Provision Master VMs on SMS-1
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1
   hosts: management_plane
   become: true
+  gather_facts: false
+
   vars:
-    vm_root: "/k8s/oses"
-    ignition_url: "http://192.168.199.5:8080"
-    fcos_qcow2_url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/43.20260316.3.1/x86_64/fedora-coreos-43.20260316.3.1-qemu.x86_64.qcow2.xz"
-    fcos_image: "fcos-base-43.qcow2"
+    vm_root: "/mnt/data/vms"
+    # SCOS QCOW2 image should be in the hub ISO folder
+    scos_image_url: "http://192.168.199.5:8080/iso/scos-live.x86_64.iso"
+
   tasks:
-    - name: 💿 DOWNLOAD - Pull FCOS 43 QCOW2 to SMS-1
-      ansible.builtin.get_url:
-        url: "{{ fcos_qcow2_url }}"
-        dest: "{{ vm_root }}/{{ fcos_image }}.xz"
-        mode: "0644"
-      register: qcow_download
-
-    - name: 📦 EXTRACT - Decompress FCOS Image
-      ansible.builtin.shell: |
-        xz -d -c {{ vm_root }}/{{ fcos_image }}.xz > {{ vm_root }}/{{ fcos_image }}
-      args:
-        creates: "{{ vm_root }}/{{ fcos_image }}"
-
-    - name: 💿 DOWNLOAD - Pull Ignition files to SMS-1 from lpt-1
-      ansible.builtin.get_url:
-        url: "http://192.168.199.5:8080/{{ item.name }}.ign"
-        dest: "/var/lib/libvirt/images/{{ item.name }}.ign"
-        mode: "0644"
-      loop:
-        - { name: "okd-bootstrap" }
-        - { name: "okd-master-01" }
-        - { name: "okd-master-02" }
-        - { name: "okd-master-03" }
-
-    - name: 🔐 PERMISSIONS - Ensure libvirt can read Ignition files
-      ansible.builtin.shell: |
-        chown libvirt-qemu:kvm /var/lib/libvirt/images/{{ item.name }}.ign
-        chmod 0644 /var/lib/libvirt/images/{{ item.name }}.ign
-        # Apply SELinux/AppArmor context if applicable
-        chcon --type svirt_home_t /var/lib/libvirt/images/{{ item.name }}.ign || true
-      loop:
-        - { name: "okd-bootstrap" }
-        - { name: "okd-master-01" }
-        - { name: "okd-master-02" }
-        - { name: "okd-master-03" }
-
-    - name: 🛡️ SECURITY - Allow QEMU to read Ignition files (AppArmor)
-      ansible.builtin.lineinfile:
-        path: /etc/apparmor.d/local/abstractions/libvirt-qemu
-        line: '"/var/lib/libvirt/images/*.ign" r,'
-        create: yes
-        state: present
-      register: apparmor_fix
-
-    - name: 🔄 RESTART - Reload AppArmor if needed
-      ansible.builtin.systemd:
-        name: apparmor
-        state: restarted
-      when: apparmor_fix.changed
-
     - name: 🏗️ VM - Create OKD Master and Bootstrap VMs
       ansible.builtin.shell: |
-        # Create a unique disk from the base image
-        qemu-img create -f qcow2 -F qcow2 -b {{ vm_root }}/{{ fcos_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
-        
-        # Ensure disk permissions
-        chown libvirt-qemu:kvm {{ vm_root }}/{{ item.name }}.qcow2
-        
         virt-install \
-          --connect="qemu:///system" \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
-          --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
-          --import \
-          --network type=direct,source=bond0,source_mode=bridge,model=virtio \
+          --disk path={{ vm_root }}/{{ item.name }}.qcow2,size={{ item.disk }},bus=virtio \
+          --location {{ scos_image_url }},kernel=casper/vmlinuz,initrd=casper/initrd \
+          --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
-          --check disk_size=off \
-          --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file=/var/lib/libvirt/images/{{ item.name }}.ign"
+          --wait 0 \
+          --extra-args "rd.neednet=1 ip=dhcp ignition.firstboot ignition.platform.id=qemu ignition.config.url=http://192.168.199.5:8080/ign/{{ item.role }}.ign"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -220,4 +87,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Cluster deployment is in progress using FCOS 43 QCOW2 images. Monitor with openshift-install wait-for bootstrap-complete."
+        msg: "OKD Masters are deploying on SMS-1. Monitor bootstrap with: openshift-install wait-for bootstrap-complete --dir=/opt/okd-cluster"

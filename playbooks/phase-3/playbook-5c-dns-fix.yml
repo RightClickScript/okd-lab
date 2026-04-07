@@ -15,6 +15,25 @@
         type: primary
         state: present
 
+    - name: 🔗 PTR - Add PTR record for AD Server (Identity-01)
+      ansible.windows.win_dns_record:
+        name: "10"
+        zone: "{{ reverse_zone }}"
+        type: "PTR"
+        value: "identity-01.{{ ad.domain_FQDN }}."
+        state: present
+
+    - name: 🔗 FORWARDERS - Point AD DNS to UniFi Router
+      ansible.windows.win_shell: |
+        Set-DnsServerForwarder -IPAddress "{{ unifi_router }}" -PassThru
+      register: forwarder_status
+
+    - name: 🛠️ FIX - Set DNS Server to listen on IPv4 only (Resolves 'Server UnKnown')
+      ansible.windows.win_shell: |
+        $DNSConfig = Get-DnsServerSetting -All
+        Set-DnsServerSetting -ListeningIPAddress 192.168.199.10
+      ignore_errors: true
+
     - name: 📂 INFRA - Sync Physical Hardware to AD DNS
       ansible.windows.win_dns_record:
         name: "{{ item.name }}"
@@ -42,7 +61,7 @@
         - { name: "okd-master-02", ip: "192.168.199.22" }
         - { name: "okd-master-03", ip: "192.168.199.23" }
 
-    - name: 📂 OKD - Create API Round-Robin Records
+    - name: 📂 OKD - Create API Round-Robin Records (Phase 1 Bootstrap)
       ansible.windows.win_dns_record:
         name: "{{ item.name }}"
         zone: "{{ ad.domain_FQDN }}"
@@ -50,7 +69,6 @@
         value: "{{ item.ip }}"
         state: present
       loop:
-        # Both API and API-INT point to Bootstrap + All Masters during install
         - { name: "api.okd", ip: "192.168.199.20" }
         - { name: "api.okd", ip: "192.168.199.21" }
         - { name: "api.okd", ip: "192.168.199.22" }
@@ -65,7 +83,7 @@
         name: "*.apps.okd"
         zone: "{{ ad.domain_FQDN }}"
         type: "A"
-        value: "192.168.199.21" # Pointing to Master 01 for now
+        value: "192.168.199.21"
         state: present
 
     - name: 🔄 RESTART - Restart DNS Service
@@ -75,4 +93,4 @@
 
     - name: 🔓 STATUS - DNS Ready for OKD
       ansible.builtin.debug:
-        msg: "DNS is live on Identity-01. OKD nodes can now resolve api-int.okd.homelab.local."
+        msg: "DNS is live. Foundation fixes applied and OKD records are active."

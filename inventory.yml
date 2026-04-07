@@ -66,6 +66,19 @@ all:
       okd_release_image: "quay.io/okd/scos-release:4.19.0-okd-scos.19"
       okd_client_url: "https://github.com/okd-project/okd/releases/download/4.19.0-okd-scos.19/openshift-client-linux-4.19.0-okd-scos.19.tar.gz"
       okd_install_url: "https://github.com/okd-project/okd/releases/download/4.19.0-okd-scos.19/openshift-install-linux-4.19.0-okd-scos.19.tar.gz"
+
+    # Infrastructure Factory Core Services
+    vault:
+      namespace: "vault"
+      version: "0.28.1"
+      kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+      hostname: "vault.homelab.local"
+
+    awx:
+      namespace: "awx"
+      version: "3.2.1"
+      kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+      hostname: "awx.homelab.local"
   hosts:
     localhost:
       ansible_connection: local

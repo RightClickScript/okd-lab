@@ -4,12 +4,6 @@
   become: true
   gather_facts: false
 
-  vars:
-    awx_namespace: "awx"
-    # Stable mid-2024 version
-    awx_operator_version: "3.2.1"
-    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
-
   tasks:
     - name: 📦 HELM - Add AWX Operator Repo
       kubernetes.core.helm_repository:
@@ -20,10 +14,10 @@
       kubernetes.core.helm:
         name: awx-operator
         chart_ref: awx-operator/awx-operator
-        release_namespace: "{{ awx_namespace }}"
+        release_namespace: "{{ awx.namespace }}"
         create_namespace: true
-        chart_version: "{{ awx_operator_version }}"
-        kubeconfig: "{{ kubeconfig }}"
+        chart_version: "{{ awx.version }}"
+        kubeconfig: "{{ awx.kubeconfig }}"
         values:
           # Correct hierarchy for the official community chart
           operator-controller-containers:
@@ -35,14 +29,14 @@
 
     - name: 📝 CONFIG - Deploy AWX Instance
       kubernetes.core.k8s:
-        kubeconfig: "{{ kubeconfig }}"
+        kubeconfig: "{{ awx.kubeconfig }}"
         state: present
         definition:
           apiVersion: awx.ansible.com/v1beta1
           kind: AWX
           metadata:
             name: awx
-            namespace: "{{ awx_namespace }}"
+            namespace: "{{ awx.namespace }}"
           spec:
             service_type: ClusterIP
             ingress_type: none
@@ -55,19 +49,19 @@
 
     - name: 🌐 INGRESS - Create AWX Ingress Rule
       kubernetes.core.k8s:
-        kubeconfig: "{{ kubeconfig }}"
+        kubeconfig: "{{ awx.kubeconfig }}"
         state: present
         definition:
           apiVersion: networking.k8s.io/v1
           kind: Ingress
           metadata:
             name: awx-ingress
-            namespace: "{{ awx_namespace }}"
+            namespace: "{{ awx.namespace }}"
             annotations:
               traefik.ingress.kubernetes.io/router.entrypoints: web
           spec:
             rules:
-              - host: "awx.homelab.local"
+              - host: "{{ awx.hostname }}"
                 http:
                   paths:
                     - path: /
@@ -80,4 +74,4 @@
 
     - name: 🎉 FINISH - Success Message
       ansible.builtin.debug:
-        msg: "AWX is deploying at http://awx.homelab.local. Monitor with: kubectl get pods -n awx"
+        msg: "AWX is deploying at http://{{ awx.hostname }}. Monitor with: kubectl get pods -n {{ awx.namespace }}"

@@ -4,11 +4,6 @@
   become: true
   gather_facts: false
 
-  vars:
-    vault_namespace: "vault"
-    vault_version: "0.28.1"
-    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
-
   tasks:
     - name: 📦 HELM - Add HashiCorp Repo
       kubernetes.core.helm_repository:
@@ -19,10 +14,10 @@
       kubernetes.core.helm:
         name: vault
         chart_ref: hashicorp/vault
-        release_namespace: "{{ vault_namespace }}"
+        release_namespace: "{{ vault.namespace }}"
         create_namespace: true
-        chart_version: "{{ vault_version }}"
-        kubeconfig: "{{ kubeconfig }}"
+        chart_version: "{{ vault.version }}"
+        kubeconfig: "{{ vault.kubeconfig }}"
         values:
           server:
             dataStorage:
@@ -37,19 +32,19 @@
 
     - name: 🌐 INGRESS - Create Vault Ingress Rule
       kubernetes.core.k8s:
-        kubeconfig: "{{ kubeconfig }}"
+        kubeconfig: "{{ vault.kubeconfig }}"
         state: present
         definition:
           apiVersion: networking.k8s.io/v1
           kind: Ingress
           metadata:
             name: vault-ingress
-            namespace: "{{ vault_namespace }}"
+            namespace: "{{ vault.namespace }}"
             annotations:
               traefik.ingress.kubernetes.io/router.entrypoints: web
           spec:
             rules:
-              - host: "vault.homelab.local"
+              - host: "{{ vault.hostname }}"
                 http:
                   paths:
                     - path: /
@@ -63,6 +58,6 @@
     - name: 🎉 FINISH - Success Message
       ansible.builtin.debug:
         msg: 
-          - "Vault is deployed at http://vault.homelab.local"
+          - "Vault is deployed at http://{{ vault.hostname }}"
           - "Status: SEALED (Manual Init Required)"
-          - "To init, run on lpt-1: kubectl exec -n vault -it vault-0 -- vault operator init"
+          - "To init, run on lpt-1: kubectl exec -n {{ vault.namespace }} -it vault-0 -- vault operator init"

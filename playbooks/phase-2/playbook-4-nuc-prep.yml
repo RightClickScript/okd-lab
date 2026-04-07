@@ -6,7 +6,6 @@
 
   vars:
     distribution_root: "/mnt/data/distribution"
-    # SCOS usually expects Ignition 3.4.0
     ign_version: "3.4.0"
 
   tasks:
@@ -18,7 +17,7 @@
         owner: 1001
         group: 1001
 
-    - name: 📄 IGNITION - Generate JSON for each NUC
+    - name: 📄 IGNITION - Generate JSON for each NUC (Static Networking)
       ansible.builtin.copy:
         dest: "{{ distribution_root }}/ign/{{ item }}.json"
         content: |
@@ -42,6 +41,21 @@
                   "path": "/etc/hostname",
                   "mode": 420,
                   "contents": { "source": "data:,{{ item | replace('_', '-') }}" }
+                },
+                {
+                  "path": "/etc/NetworkManager/system-connections/bond0.nmconnection",
+                  "mode": 384,
+                  "contents": { "source": "data:,%5Bconnection%5D%0Aid%3Dbond0%0Atype%3Dbond%0Ainterface-name%3Dbond0%0A%0A%5Bbond%5D%0Amode%3Dactive-backup%0A%0A%5Bipv4%5D%0Aaddress1%3D{{ hostvars[item].ansible_host }}/24,192.168.199.254%0Adns%3D192.168.1.1;%0Adns-search%3Dhomelab.local;%0Amethod%3Dmanual" }
+                },
+                {
+                  "path": "/etc/NetworkManager/system-connections/vlan198.nmconnection",
+                  "mode": 384,
+                  "contents": { "source": "data:,%5Bconnection%5D%0Aid%3Dvlan198%0Atype%3Dvlan%0Ainterface-name%3Dvlan198%0A%0A%5Bvlan%5D%0Abase-interface%3Dbond0%0Aid%3D198%0A%0A%5Bipv4%5D%0Amethod%3Dauto" }
+                },
+                {
+                  "path": "/etc/NetworkManager/system-connections/{{ hostvars[item].physical_iface }}.nmconnection",
+                  "mode": 384,
+                  "contents": { "source": "data:,%5Bconnection%5D%0Aid%3D{{ hostvars[item].physical_iface }}%0Atype%3Dethernet%0Ainterface-name%3D{{ hostvars[item].physical_iface }}%0Amaster%3Dbond0%0Aslave-type%3Dbond" }
                 }
               ]
             }
@@ -51,8 +65,7 @@
     - name: 🔓 STATUS - Ignition URLs Ready
       ansible.builtin.debug:
         msg:
-          - "SCOS Ignition files are ready for manual installation:"
+          - "SCOS Ignition files (STATIC NET) are ready:"
           - "NUC-1: http://192.168.199.5:8080/ign/nuc-1.json"
           - "NUC-2: http://192.168.199.5:8080/ign/nuc-2.json"
           - "NUC-3: http://192.168.199.5:8080/ign/nuc-3.json"
-          - "Install Command example: coreos-installer install /dev/nvme0n1 --ignition-url http://192.168.199.5:8080/ign/nuc-1.json"

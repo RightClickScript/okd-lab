@@ -1,99 +1,57 @@
 ---
-- name: Phase 2.1 - AMD Epyc Sanitization & Networking (Nuke & Pave)
+- name: Phase 2.1 - AMD Epyc Hypervisor Foundations (Non-Networking)
   hosts: management_plane
   become: true
   gather_facts: true
 
   tasks:
     - name: 🛑 SANITIZATION - Remove LXD/LXC
-      ansible.builtin.apt:
-        name: ["lxd", "lxd-client", "lxc", "lxcfs"]
-        state: absent
-        purge: true
+      block:
+        - name: Gather service facts
+          ansible.builtin.service_facts:
 
-    - name: 📦 DEPENDENCIES - Install Bridge, Virtualization & Cockpit UI
+        - name: Stop and disable LXD/LXC services
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop: [lxd.service, lxd-agent.service, lxcfs.service]
+          when: "ansible_facts.services[item] is defined"
+          ignore_errors: true
+
+        - name: Purge LXD/LXC Artifacts
+          ansible.builtin.apt:
+            name: ["lxd", "lxd-client", "lxc", "lxcfs"]
+            state: absent
+            purge: true
+
+    - name: 📦 DEPENDENCIES - Install KVM, Libvirt & Cockpit UI
       ansible.builtin.apt:
         name: 
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
           - bridge-utils
-          - ifupdown
+          - virtinst
+          - virt-manager
+          - ovmf
+          - cockpit
+          - cockpit-machines
           - python3-libvirt
           - python3-lxml
           - python3-yaml
           - python3-pip
-          - cockpit
-          - cockpit-machines
         state: present
 
-    - name: 🌐 NETWORKING - Rebuild Standardized Netplan
-      block:
-        - name: 🛡️ SAFETY - Deactivate existing netplans
-          ansible.builtin.shell: |
-            for f in /etc/netplan/*.yaml; do
-              if [ -f "$f" ]; then
-                mv "$f" "${f}.bak"
-              fi
-            done
-          args: { executable: /bin/bash }
-          changed_when: true
-
-        - name: 🧹 CLEANUP - Tear down existing interfaces
-          ansible.builtin.shell: |
-            ip link set br0 down || true
-            ip link delete br0 || true
-            ip link set br198 down || true
-            ip link delete br198 || true
-            ip link delete vlan198 || true
-            ip addr flush dev bond0 || true
-          args: { executable: /bin/bash }
-          changed_when: true
-
-        - name: Generate Clean Infrastructure Netplan
-          ansible.builtin.copy:
-            dest: /etc/netplan/99-infra-factory.yaml
-            mode: "0644"
-            content: |
-              network:
-                version: 2
-                renderer: networkd
-                ethernets:
-                  {{ physical_iface }}:
-                    dhcp4: no
-                    optional: true
-                bonds:
-                  bond0:
-                    interfaces: [ "{{ physical_iface }}" ]
-                    parameters:
-                      mode: active-backup
-                      mii-monitor-interval: 100
-                bridges:
-                  br0:
-                    interfaces: [ bond0 ]
-                    addresses: [ "192.168.199.4/24" ]
-                    routes:
-                      - to: default
-                        via: 192.168.199.254
-                    nameservers:
-                      addresses: [ 192.168.1.1 ]
-                      search: [ homelab.local ]
-                    parameters:
-                      stp: false
-                    dhcp4: no
-                vlans:
-                  vlan198:
-                    id: 198
-                    link: br0
-                    dhcp4: yes
-
-        - name: Apply netplan
-          ansible.builtin.command: netplan apply
-          async: 15
-          poll: 0
-
-        - name: Wait for host to reconnect on br0
-          ansible.builtin.wait_for_connection:
-            delay: 5
-            timeout: 60
+    - name: 👥 ACCESS - Add bishop to libvirt group
+      ansible.builtin.user:
+        name: bishop
+        groups: libvirt,kvm
+        append: true
 
     - name: 🔓 STATUS - Success Message
       ansible.builtin.debug:
-        msg: "SMS-1 Networking is standardized. Cockpit available at https://192.168.199.4:9090"
+        msg: 
+          - "SMS-1 is now prepared with Hypervisor tools and Cockpit."
+          - "Cockpit UI: https://192.168.199.4:9090"
+          - "Networking: Preserved from Phase 0 Standard (br0, br198)."

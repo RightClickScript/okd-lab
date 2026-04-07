@@ -5,9 +5,8 @@
   gather_facts: false
 
   vars:
-    # Directory-based storage pool for simplicity in lab environment
-    storage_pool_path: "/var/lib/libvirt/images"
-    storage_pool_name: "default"
+    storage_pool_path: "/mnt/data/vms"
+    storage_pool_name: "datapool"
 
   tasks:
     - name: 🏗️ HYPERVISOR - Install KVM & Libvirt
@@ -23,6 +22,7 @@
           - python3-lxml
           - cockpit
           - cockpit-machines
+          - zfsutils-linux
         state: present
 
     - name: 👥 ACCESS - Add bishop to libvirt group
@@ -30,6 +30,25 @@
         name: bishop
         groups: libvirt,kvm
         append: true
+
+    - name: 📁 STORAGE - Initialize ZFS Datapool
+      block:
+        - name: Check if ZFS pool exists
+          ansible.builtin.shell: "zpool list {{ lab_init.zpool_name }}"
+          register: zpool_check
+          ignore_errors: true
+          changed_when: false
+
+        - name: Create ZFS Datapool on NVMe
+          ansible.builtin.command: "zpool create {{ lab_init.zpool_name }} {{ data_disk }} -m {{ lab_init.zfs_mount_point }}"
+          when: zpool_check.rc != 0
+          changed_when: true
+
+        - name: Create VM Storage Dataset
+          ansible.builtin.zfs:
+            name: "{{ lab_init.zpool_name }}/vms"
+            state: present
+            mountpoint: "{{ storage_pool_path }}"
 
     - name: 📁 STORAGE - Configure Libvirt Storage Pool
       block:
@@ -59,25 +78,30 @@
             state: active
             autostart: true
 
-    - name: 🌐 NETWORKING - Create br0 Bridge for VMs
+    - name: 🌐 NETWORKING - Link Libvirt to br0 Bridge
       ansible.builtin.shell: |
+        virsh net-destroy br0 || true
+        virsh net-undefine br0 || true
         virsh net-define /dev/stdin <<EOF
         <network>
           <name>br0</name>
           <forward mode='bridge'/>
-          <bridge name='bond0'/>
+          <bridge name='br0'/>
         </network>
         EOF
-        virsh net-start br0 || true
-        virsh net-autostart br0 || true
-      ignore_errors: true
+        virsh net-start br0
+        virsh net-autostart br0
+      args:
+        executable: /bin/bash
+      changed_when: true
 
-    - name: 🌐 NETWORKING - Verify Libvirt Bridge
+    - name: 🌐 NETWORKING - Verify Libvirt State
       ansible.builtin.shell: |
         virsh net-list --all
-      register: virsh_net
+        virsh pool-list --all
+      register: virsh_status
       changed_when: false
 
     - name: 🔓 STATUS - Ready for VMs
       ansible.builtin.debug:
-        msg: "AMD Epyc is now ready for VM deployment in Phase 3."
+        msg: "AMD Epyc is now fully prepared with ZFS NVMe storage and Bridged networking."

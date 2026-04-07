@@ -87,6 +87,7 @@
         if "files" not in data["storage"]: data["storage"]["files"] = []
         data["storage"]["files"].append(new_file)
         
+        # Write back as the specific node file
         with open(f"{{ install_dir }}/{name}.ign", 'w') as f:
             json.dump(data, f)
         EOF
@@ -131,7 +132,7 @@
         force: false
         timeout: 600
 
-    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (with Auto-Reboot)
+    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (with --events)
       ansible.builtin.shell: |
         # Destroy existing VM if it exists to allow fresh install
         virsh destroy {{ item.name }} || true
@@ -148,8 +149,7 @@
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
-          --on-reboot=restart \
-          --on-crash=restart \
+          --events on_reboot=restart,on_crash=restart \
           --extra-args "rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign coreos.inst.reboot"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
@@ -161,4 +161,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are now AUTOMATICALLY installing and will REBOOT into the OS. Monitor via Cockpit!"
+        msg: "OKD Masters are now AUTOMATICALLY installing with correct lifecycle events. Monitor via Cockpit!"

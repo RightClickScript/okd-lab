@@ -1,5 +1,5 @@
 ---
-- name: Phase 4.1 - Generate and Patch OKD Ignition (lpt-1)
+- name: Phase 4.1 - Generate OKD Configs and Extract Boot Files (lpt-1)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -49,7 +49,7 @@
         with open(file_path, 'r') as f:
             data = json.load(f)
         
-        # 1. ADD PASSWORD FOR CORE USER (Admin@12345)
+        # 1. ADD PASSWORD FOR CORE USER
         if "passwd" not in data: data["passwd"] = {}
         if "users" not in data["passwd"]: data["passwd"]["users"] = []
         
@@ -97,6 +97,15 @@
         python3 /tmp/patch_ignition.py okd-master-03 192.168.199.23 master
       changed_when: true
 
+    - name: 💿 BOOT - Extract Kernel and Initrd from SCOS ISO
+      ansible.builtin.shell: |
+        mkdir -p /tmp/scos-mnt
+        mount -o loop {{ distribution_root }}/iso/scos-live.x86_64.iso /tmp/scos-mnt
+        cp /tmp/scos-mnt/images/pxeboot/vmlinuz {{ distribution_root }}/iso/vmlinuz
+        cp /tmp/scos-mnt/images/pxeboot/initrd.img {{ distribution_root }}/iso/initrd.img
+        umount /tmp/scos-mnt
+      changed_when: true
+
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
         src: "{{ install_dir }}/{{ item }}.ign"
@@ -105,24 +114,26 @@
         mode: "0644"
         owner: 1001
         group: 1001
-      loop:
-        - okd-bootstrap
-        - okd-master-01
-        - okd-master-02
-        - okd-master-03
-        - worker
+      loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (NUC-Style Boot)
   hosts: management_plane
   become: true
   gather_facts: false
 
   vars:
     vm_root: "/mnt/data/vms"
-    scos_iso_url: "http://192.168.199.5:8080/iso/scos-live.x86_64.iso"
+    hub_url: "http://192.168.199.5:8080"
 
   tasks:
-    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs (Location + RootFS)
+    - name: 💿 BOOT - Download Kernel and Initrd to SMS-1
+      ansible.builtin.get_url:
+        url: "{{ hub_url }}/iso/{{ item }}"
+        dest: "{{ vm_root }}/{{ item }}"
+        mode: "0644"
+      loop: [vmlinuz, initrd.img]
+
+    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs
       ansible.builtin.shell: |
         # Destroy existing VM
         virsh destroy {{ item.name }} || true
@@ -134,21 +145,21 @@
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
           --disk path={{ vm_root }}/{{ item.name }}.qcow2,size={{ item.disk }},bus=virtio \
-          --location {{ scos_iso_url }},kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img \
+          --install kernel={{ vm_root }}/vmlinuz,initrd={{ vm_root }}/initrd.img \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
           --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip={{ item.ip }}::{{ network.mgmt_gateway }}:255.255.255.0:{{ item.name }}:enp1s0:none:{{ network.primary_dns }} coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url=http://192.168.199.5:8080/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ scos_iso_url }}"
+          --extra-args "rd.neednet=1 ip=dhcp coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/scos-live.x86_64.iso"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
-        - { name: "okd-bootstrap", ip: "192.168.199.20", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-01", ip: "192.168.199.21", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-02", ip: "192.168.199.22", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-03", ip: "192.168.199.23", ram: 16384, cpu: 4, disk: 100 }
+        - { name: "okd-bootstrap", ram: 16384, cpu: 4, disk: 100 }
+        - { name: "okd-master-01", ram: 16384, cpu: 4, disk: 100 }
+        - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
+        - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
 
     - name: 🔓 STATUS - OKD Deployment Started
       ansible.builtin.debug:
-        msg: "OKD Masters are now booting via HTTP Location with explicit RootFS. Monitor via Cockpit console."
+        msg: "OKD Masters are booting via DHCP to pull their STATIC Ignition. This matches the NUC workflow."

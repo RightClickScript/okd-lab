@@ -51,7 +51,7 @@
                       pathType: Prefix
                       backend:
                         service:
-                          name: vault-ui
+                          name: vault # FIXED: Corrected from vault-ui to vault
                           port:
                             number: 8200
 

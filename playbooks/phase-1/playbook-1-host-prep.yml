@@ -59,7 +59,7 @@
       block:
         - name: Install dependencies
           ansible.builtin.apt:
-            name: [curl, wakeonlan, docker.io, python3-pip, python3-kubernetes, python3-yaml, ansible]
+            name: [curl, wakeonlan, docker.io, python3-pip, python3-kubernetes, python3-yaml, ansible, genisoimage]
             state: present
 
         - name: Install Helm Binary

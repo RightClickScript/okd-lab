@@ -32,14 +32,12 @@
       ansible.builtin.template:
         src: "../../templates/windows/autounattend.xml.j2"
         dest: "/tmp/autounattend.xml"
-      delegate_to: localhost
-      become: false
+      delegate_to: lpt-1
 
     - name: 💿 ISO - Create Unattended ISO (on Laptop)
       ansible.builtin.shell: |
         genisoimage -output /tmp/unattended.iso -volid "unattended" -joliet -rock /tmp/autounattend.xml
-      delegate_to: localhost
-      become: false
+      delegate_to: lpt-1
 
     - name: 📤 UPLOAD - Transfer Unattended ISO to AMD Epyc
       ansible.builtin.copy:
@@ -47,6 +45,7 @@
         dest: "{{ unattended_iso }}"
         mode: "0644"
         force: true
+      remote_src: false
 
     - name: 💿 DISK - Create QCOW2 Disk in ZFS Datapool
       ansible.builtin.command:

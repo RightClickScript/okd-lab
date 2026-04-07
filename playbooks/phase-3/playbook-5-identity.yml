@@ -5,26 +5,21 @@
   gather_facts: false
 
   vars:
-    # ISO Details - Windows Server 2022 Evaluation
-    iso_url: "https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US"
-    # Local paths on Laptop
-    local_unattended_xml: "/tmp/autounattend.xml"
-    local_unattended_iso: "/tmp/unattended.iso"
-    # Remote paths on AMD Epyc
-    iso_root: "/var/lib/libvirt/images"
+    # Remote paths on AMD Epyc (SMS-1) - Aligned with ZFS Datapool
+    iso_root: "/mnt/data/vms"
     win_iso: "{{ iso_root }}/WinServer2022.iso"
     virtio_iso: "{{ iso_root }}/virtio-win.iso"
     unattended_iso: "{{ iso_root }}/unattended.iso"
-    vm_name: "identity-01"
+    vm_name: "{{ dcdetails.name }}"
 
   tasks:
-    - name: 📦 PREREQ - Download Windows Server ISO (Idempotent)
+    - name: 📦 PREREQ - Download Windows Server ISO from Local Hub
       ansible.builtin.get_url:
-        url: "{{ iso_url }}"
+        url: "{{ dcdetails.iso_url }}"
         dest: "{{ win_iso }}"
         mode: "0644"
         force: false
-        timeout: 1800 # 30 minute timeout for 5GB+ file
+        timeout: 600
 
     - name: 📦 PREREQ - Download VirtIO Drivers (Idempotent)
       ansible.builtin.get_url:
@@ -36,47 +31,29 @@
     - name: 📄 TEMPLATE - Render Autounattend XML
       ansible.builtin.template:
         src: "../../templates/windows/autounattend.xml.j2"
-        dest: "{{ local_unattended_xml }}"
+        dest: "/tmp/autounattend.xml"
       delegate_to: localhost
       become: false
 
-    - name: 🗑️ CLEANUP - Remove old Unattended ISO
-      ansible.builtin.file:
-        path: "{{ local_unattended_iso }}"
-        state: absent
-      delegate_to: localhost
-      become: false
-
-    - name: � ISO - Create Unattended ISO (on Laptop)
+    - name: 💿 ISO - Create Unattended ISO (on Laptop)
       ansible.builtin.shell: |
-        genisoimage -output {{ local_unattended_iso }} -volid "unattended" -joliet -rock {{ local_unattended_xml }}
+        genisoimage -output /tmp/unattended.iso -volid "unattended" -joliet -rock /tmp/autounattend.xml
       delegate_to: localhost
       become: false
 
     - name: 📤 UPLOAD - Transfer Unattended ISO to AMD Epyc
       ansible.builtin.copy:
-        src: "{{ local_unattended_iso }}"
+        src: "/tmp/unattended.iso"
         dest: "{{ unattended_iso }}"
         mode: "0644"
         force: true
 
-    - name: 🔍 CHECK - Verify Windows ISO exists
-      ansible.builtin.stat:
-        path: "{{ win_iso }}"
-      register: win_iso_stat
-
-    - name: 🛑 FAIL - If Windows ISO is missing
-      ansible.builtin.fail:
-        msg: "The Windows ISO is missing at {{ win_iso }}. Please download it first!"
-      when: not win_iso_stat.stat.exists
-
-    - name: 💿 DISK - Create QCOW2 Disk
-      ansible.builtin.shell: |
-        qemu-img create -f qcow2 {{ iso_root }}/{{ vm_name }}.qcow2 {{ dcdetails.BootDiskSize }}G
-      args:
+    - name: 💿 DISK - Create QCOW2 Disk in ZFS Datapool
+      ansible.builtin.command:
+        cmd: "qemu-img create -f qcow2 {{ iso_root }}/{{ vm_name }}.qcow2 {{ dcdetails.BootDiskSize }}G"
         creates: "{{ iso_root }}/{{ vm_name }}.qcow2"
 
-    - name: 🏗️ VM - Define and Start Identity VM
+    - name: 🏗️ VM - Define and Start Identity VM (Bridged to br0)
       ansible.builtin.shell: |
         virt-install \
           --name {{ vm_name }} \
@@ -87,14 +64,17 @@
           --disk path={{ win_iso }},device=cdrom,bus=sata,readonly=on \
           --disk path={{ virtio_iso }},device=cdrom,bus=sata,readonly=on \
           --disk path={{ unattended_iso }},device=cdrom,bus=sata,readonly=on \
-          --network type=direct,source=bond0,source_mode=bridge,model=virtio \
+          --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --boot cdrom,hd \
-          --import
+          --wait 0
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 
     - name: 🔓 STATUS - Deployment Started
       ansible.builtin.debug:
-        msg: "Identity VM '{{ vm_name }}' is installing. It will be reachable at {{ dcdetails.IPAddress }} via WinRM shortly."
+        msg: 
+          - "Identity VM '{{ vm_name }}' is installing on SMS-1."
+          - "Monitor graphical console via Cockpit: https://192.168.199.4:9090"
+          - "VM will be reachable at {{ dcdetails.IPAddress }} shortly."

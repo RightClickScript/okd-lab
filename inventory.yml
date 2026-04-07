@@ -29,6 +29,7 @@ all:
       Memory: 4096
       CPU: 2
       BootDiskSize: 40
+      iso_url: "http://192.168.199.5:8080/windows-server.iso"
 
     # KVM & Management (GL.iNet IP-KVM)
     kvm:

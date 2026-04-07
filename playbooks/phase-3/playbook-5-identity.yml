@@ -28,24 +28,16 @@
         mode: "0644"
         force: false
 
-    - name: 📄 TEMPLATE - Render Autounattend XML
+    - name: 📄 TEMPLATE - Render Autounattend XML on Target
       ansible.builtin.template:
         src: "../../templates/windows/autounattend.xml.j2"
         dest: "/tmp/autounattend.xml"
-      delegate_to: lpt-1
 
-    - name: 💿 ISO - Create Unattended ISO (on Laptop)
+    - name: 💿 ISO - Create Unattended ISO on Target
       ansible.builtin.shell: |
-        genisoimage -output /tmp/unattended.iso -volid "unattended" -joliet -rock /tmp/autounattend.xml
-      delegate_to: lpt-1
-
-    - name: 📤 UPLOAD - Transfer Unattended ISO to AMD Epyc
-      ansible.builtin.copy:
-        src: "/tmp/unattended.iso"
-        dest: "{{ unattended_iso }}"
-        mode: "0644"
-        force: true
-      remote_src: false
+        genisoimage -output {{ unattended_iso }} -volid "unattended" -joliet -rock /tmp/autounattend.xml
+      args:
+        executable: /bin/bash
 
     - name: 💿 DISK - Create QCOW2 Disk in ZFS Datapool
       ansible.builtin.command:

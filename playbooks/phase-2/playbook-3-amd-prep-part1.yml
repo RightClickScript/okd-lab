@@ -37,6 +37,7 @@
           - ovmf
           - cockpit
           - cockpit-machines
+          - genisoimage
           - python3-libvirt
           - python3-lxml
           - python3-yaml

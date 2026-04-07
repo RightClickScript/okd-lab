@@ -1,203 +1,58 @@
 ---
-- name: Phase 2.3a - NUC Sanitization & Networking
-  hosts: compute_plane
-  become: true
-  gather_facts: true
-  tags: [ phase-2.3a ]
-  tasks:
-    - name: 🛑 SANITIZATION - Remove LXD/LXC (If present)
-      block:
-        - name: Gather service facts
-          ansible.builtin.service_facts:
-
-        - name: Purge LXD/LXC and Snaps
-          ansible.builtin.shell: |
-            snap remove --purge lxd || true
-            apt-get purge -y lxd lxd-client lxc lxcfs || true
-            rm -rf /var/lib/lxd /var/snap/lxd /var/lib/lxcfs || true
-          ignore_errors: true
-
-    - name: 🌐 NETWORKING - Standardize with Netplan
-      ansible.builtin.copy:
-        dest: /etc/netplan/99-morpheus-infra.yaml
-        mode: "0644"
-        content: |
-          network:
-            version: 2
-            ethernets:
-              {{ physical_iface }}:
-                dhcp4: no
-            bonds:
-              bond0:
-                interfaces: [ "{{ physical_iface }}" ]
-                parameters:
-                  mode: active-backup
-                addresses: [ "{{ ansible_host }}/24" ]
-                routes:
-                  - to: default
-                    via: 192.168.199.254
-                nameservers:
-                  addresses: [ 192.168.1.1 ]
-                  search: [ homelab.local ]
-            vlans:
-              vlan198:
-                id: 198
-                link: bond0
-                dhcp4: yes
-
-    - name: Apply Netplan
-      ansible.builtin.command: netplan apply
-      async: 10
-      poll: 0
-
-- name: Phase 2.3b - Factory Prep (WOL & Ignition Server)
+- name: Phase 2.3 - NUC Ignition Generation (Manual Install Support)
   hosts: local_spark
   become: true
-  tags: [ phase-2.3b ]
-  tasks:
-    - name: ⚡ WOL - Power On NUCs via Magic Packet
-      ansible.builtin.command: "wakeonlan {{ hostvars[item]['mac'] }}"
-      loop: "{{ groups['compute_plane'] }}"
-      when: hostvars[item]['mac'] is defined
-      changed_when: true
+  gather_facts: false
 
-    - name: 📂 IGNITION - Setup Web Server
-      block:
-        - name: Create ignition storage directory
-          ansible.builtin.file:
-            path: /opt/ignition
-            state: directory
-            mode: '0755'
-
-        - name: Generate Ignition JSON for each NUC
-          ansible.builtin.copy:
-            dest: "/opt/ignition/{{ item }}.json"
-            content: |
-              {
-                "ignition": { "version": "3.5.0" },
-                "passwd": {
-                  "users": [
-                    {
-                      "name": "bishop",
-                      "passwordHash": "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1",
-                      "sshAuthorizedKeys": [
-                        "{{ ansible_ssh_public_key }}"
-                      ],
-                      "groups": ["sudo", "wheel"]
-                    }
-                  ]
-                },
-                "storage": {
-                  "files": [
-                    {
-                      "path": "/etc/hostname",
-                      "mode": 420,
-                      "contents": { "source": "data:,{{ item | replace('_', '-') }}" }
-                    },
-                    {
-                      "path": "/etc/NetworkManager/system-connections/bond0.nmconnection",
-                      "mode": 384,
-                      "contents": { "source": "data:,%5Bconnection%5D%0Aid%3Dbond0%0Atype%3Dbond%0Ainterface-name%3Dbond0%0A%0A%5Bbond%5D%0Amode%3Dactive-backup%0A%0A%5Bipv4%5D%0Aaddress1%3D{{ hostvars[item].ansible_host }}/24,192.168.199.254%0Adns%3D192.168.1.1;%0Adns-search%3Dhomelab.local;%0Amethod%3Dmanual" }
-                    },
-                    {
-                      "path": "/etc/NetworkManager/system-connections/vlan198.nmconnection",
-                      "mode": 384,
-                      "contents": { "source": "data:,%5Bconnection%5D%0Aid%3Dvlan198%0Atype%3Dvlan%0Ainterface-name%3Dvlan198%0A%0A%5Bvlan%5D%0Abase-interface%3Dbond0%0Aid%3D198%0A%0A%5Bipv4%5D%0Amethod%3Dauto" }
-                    },
-                    {
-                      "path": "/etc/NetworkManager/system-connections/{{ hostvars[item].physical_iface }}.nmconnection",
-                      "mode": 384,
-                      "contents": { "source": "data:,%5Bconnection%5D%0Aid%3D{{ hostvars[item].physical_iface }}%0Atype%3Dethernet%0Ainterface-name%3D{{ hostvars[item].physical_iface }}%0Amaster%3Dbond0%0Aslave-type%3Dbond" }
-                    }
-                  ]
-                }
-              }
-          loop: "{{ groups['compute_plane'] }}"
-
-        - name: Start Nginx Container to serve Ignition files
-          community.docker.docker_container:
-            name: ignition-server
-            image: nginx:alpine
-            state: started
-            restart_policy: always
-            ports:
-              - "8080:80"
-            volumes:
-              - /opt/ignition:/usr/share/nginx/html:ro
-
-    - name: 🔓 STATUS - Ready for Compute Plane
-      ansible.builtin.debug:
-        msg: "NUCs sanitized. Ignition server active at http://192.168.199.5:8080"
-
-- name: Phase 2.3c - Phoenix Rebuild (Bare-metal OS Provisioning)
-  hosts: local_spark
-  become: true
-  tags: [ phase-2.3c ]
   vars:
-    # Trigger this with: -e "target_nuc=nuc_1 phoenix_rebuild=true"
-    phoenix_rebuild: false
-    target_nuc: ""
-    fcos_filename: "fedora-coreos-39.20240128.3.0-live.x86_64.iso"
+    distribution_root: "/mnt/data/distribution"
+    # SCOS usually expects Ignition 3.4.0
+    ign_version: "3.4.0"
+
   tasks:
-    - name: 🔥 PHOENIX - Automate Fresh FCOS Installation (IP-KVM)
-      block:
-        - name: 🔍 CHECK - Ensure target NUC is specified
-          ansible.builtin.fail:
-            msg: "Please specify target_nuc (e.g., nuc_1)"
-          when: target_nuc == ""
+    - name: 📂 FOLDER - Ensure Ignition directory exists on Hub
+      ansible.builtin.file:
+        path: "{{ distribution_root }}/ign"
+        state: directory
+        mode: '0755'
+        owner: 1001
+        group: 1001
 
-        - name: 🔌 SWITCH - Send TESmart Hotkeys (state=true/false)
-          block:
-            - name: Tap ControlRight (1)
-              ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight&state={{ item }}"
-                method: POST
-                validate_certs: false
-                headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-              loop: [ true, false ]
-            - name: Tap ControlRight (2)
-              ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=ControlRight&state={{ item }}"
-                method: POST
-                validate_certs: false
-                headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-              loop: [ true, false ]
-            - name: Type Port Number
-              ansible.builtin.uri:
-                url: "https://{{ kvm.ip }}/api/hid/print"
-                method: POST
-                validate_certs: false
-                headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-                body: "{{ nuc_mgmt[target_nuc].port | string }}"
+    - name: 📄 IGNITION - Generate JSON for each NUC
+      ansible.builtin.copy:
+        dest: "{{ distribution_root }}/ign/{{ item }}.json"
+        content: |
+          {
+            "ignition": { "version": "{{ ign_version }}" },
+            "passwd": {
+              "users": [
+                {
+                  "name": "bishop",
+                  "passwordHash": "$6$2.AkBiINvK6sG1Xc$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1",
+                  "sshAuthorizedKeys": [
+                    "{{ ansible_ssh_public_key }}"
+                  ],
+                  "groups": ["sudo", "wheel"]
+                }
+              ]
+            },
+            "storage": {
+              "files": [
+                {
+                  "path": "/etc/hostname",
+                  "mode": 420,
+                  "contents": { "source": "data:,{{ item | replace('_', '-') }}" }
+                }
+              ]
+            }
+          }
+      loop: "{{ groups['compute_plane'] }}"
 
-        - name: 💿 MEDIA - Verify FCOS ISO exists on PiKVM
-          ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/msd"
-            method: GET
-            validate_certs: false
-            headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-          register: iso_list
-          failed_when: "kvm.fcos_iso_name not in iso_list.json.result.storage.images"
-
-        - name: 💿 MEDIA - Mount FCOS ISO (set_params)
-          ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/msd/set_params?image={{ kvm.fcos_iso_name }}&cdrom=1"
-            method: POST
-            validate_certs: false
-            headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-
-        - name: 🔄 REBOOT - Trigger Reboot on Target NUC
-          ansible.builtin.reboot:
-          delegate_to: "{{ target_nuc }}"
-          ignore_errors: true
-
-        - name: ⌨️ KEYS - Spam F10 for Boot Menu
-          ansible.builtin.uri:
-            url: "https://{{ kvm.ip }}/api/hid/events/send_key?key=F10&state={{ item }}"
-            method: POST
-            validate_certs: false
-            headers: { X-KVMD-User: "{{ kvm.user }}", X-KVMD-Passwd: "{{ kvm.pass }}" }
-          loop: "{{ [true, false] * 20 }}"
-          ignore_errors: true
-
-      when: phoenix_rebuild | bool
+    - name: 🔓 STATUS - Ignition URLs Ready
+      ansible.builtin.debug:
+        msg:
+          - "SCOS Ignition files are ready for manual installation:"
+          - "NUC-1: http://192.168.199.5:8080/ign/nuc-1.json"
+          - "NUC-2: http://192.168.199.5:8080/ign/nuc-2.json"
+          - "NUC-3: http://192.168.199.5:8080/ign/nuc-3.json"
+          - "Install Command example: coreos-installer install /dev/nvme0n1 --ignition-url http://192.168.199.5:8080/ign/nuc-1.json"

@@ -5,28 +5,29 @@
   gather_facts: false
 
   vars:
-    # ISO Details - Ubuntu 22.04.5 Live Server
-    iso_url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
-    iso_root: "/var/lib/libvirt/images"
+    # ISO Details - Using Local Hub
+    iso_url: "http://192.168.199.5:8080/iso/ubuntu-22.04.5-live-server-amd64.iso"
+    iso_root: "/mnt/data/vms"
     ubuntu_iso: "{{ iso_root }}/ubuntu-22.04.5-live-server-amd64.iso"
     vm_name: "{{ morpheusdetails.name }}"
     vm_disk: "{{ iso_root }}/{{ vm_name }}.qcow2"
     # HTTP Data Source (Container Host)
     http_server: "192.168.199.5:8080"
-    http_root: "/opt/ignition/morpheus"
+    distribution_root: "/mnt/data/distribution" # Aligned with Nginx root
 
   tasks:
-    - name: 📂 HTTP - Setup Directory on Container Host
+    - name: 📂 HTTP - Setup Directory on Container Host (lpt-1)
       ansible.builtin.file:
-        path: "{{ http_root }}"
+        path: "{{ distribution_root }}/morpheus"
         state: directory
         mode: '0755'
-      delegate_to: localhost
-      become: true
+        owner: 1001
+        group: 1001
+      delegate_to: lpt-1
 
-    - name: 📄 AUTOINSTALL - Generate user-data (On Container Host)
+    - name: 📄 AUTOINSTALL - Generate user-data (On lpt-1)
       ansible.builtin.copy:
-        dest: "{{ http_root }}/user-data"
+        dest: "{{ distribution_root }}/morpheus/user-data"
         content: |
           #cloud-config
           autoinstall:
@@ -62,30 +63,27 @@
               - echo 'bishop ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/bishop
               - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/bishop
             timezone: US/Eastern
-      delegate_to: localhost
-      become: true
+      delegate_to: lpt-1
 
-    - name: 📄 AUTOINSTALL - Generate empty meta-data (On Container Host)
+    - name: 📄 AUTOINSTALL - Generate empty meta-data (On lpt-1)
       ansible.builtin.copy:
-        dest: "{{ http_root }}/meta-data"
+        dest: "{{ distribution_root }}/morpheus/meta-data"
         content: ""
-      delegate_to: localhost
-      become: true
+      delegate_to: lpt-1
 
-    - name: 📦 PREREQ - Download Ubuntu Server ISO
+    - name: 📦 PREREQ - Download Ubuntu Server ISO to SMS-1
       ansible.builtin.get_url:
         url: "{{ iso_url }}"
         dest: "{{ ubuntu_iso }}"
         mode: "0644"
         force: false
 
-    - name: 💿 DISK - Create QCOW2 Disk
-      ansible.builtin.shell: |
-        qemu-img create -f qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G
-      args:
+    - name: 💿 DISK - Create QCOW2 Disk in ZFS Datapool
+      ansible.builtin.command:
+        cmd: "qemu-img create -f qcow2 {{ vm_disk }} {{ morpheusdetails.BootDiskSize }}G"
         creates: "{{ vm_disk }}"
 
-    - name: 🏗️ VM - Define and Start Morpheus VM (HTTP Injection)
+    - name: 🏗️ VM - Define and Start Morpheus VM (Bridged to br0)
       ansible.builtin.shell: |
         virt-install \
           --name {{ vm_name }} \
@@ -94,7 +92,7 @@
           --os-variant ubuntu22.04 \
           --location {{ ubuntu_iso }},kernel=casper/vmlinuz,initrd=casper/initrd \
           --disk path={{ vm_disk }},format=qcow2,bus=virtio \
-          --network type=direct,source=bond0,source_mode=bridge,model=virtio \
+          --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait -1 \
@@ -120,15 +118,9 @@
       ansible.builtin.wait_for_connection:
         timeout: 1200
 
-    - name: 📤 UPLOAD - Transfer Morpheus Binary
-      ansible.builtin.copy:
-        src: "{{ morpheusdetails.binary_local_path }}"
-        dest: "{{ morpheusdetails.binary_remote_path }}"
-        mode: "0644"
-
-    - name: 🏗️ INSTALL - Install Morpheus Package
+    - name: 🏗️ INSTALL - Install Morpheus Package Directly from Hub
       ansible.builtin.apt:
-        deb: "{{ morpheusdetails.binary_remote_path }}"
+        deb: "http://192.168.199.5:8080/bin/morpheus-appliance.deb"
         state: present
 
     - name: ⚙️ CONFIG - Reconfigure Morpheus (Initial)

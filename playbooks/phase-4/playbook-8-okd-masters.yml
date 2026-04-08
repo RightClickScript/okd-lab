@@ -112,7 +112,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (QCOW2 Direct Boot)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Selective Deployment)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -120,6 +120,14 @@
   vars:
     vm_root: "/mnt/data/vms"
     base_image: "{{ vm_root }}/scos-base.qcow2"
+    # Default to False (full deploy)
+    bootstrap_only: false
+    
+    vm_list:
+      - { name: "okd-bootstrap", ram: 32768, cpu: 4, disk: 100 }
+      - { name: "okd-master-01", ram: 16384, cpu: 4, disk: 100 }
+      - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
+      - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
 
   tasks:
     - name: 💿 BASE - Download SCOS QCOW2 Image to SMS-1
@@ -135,19 +143,19 @@
       args:
         creates: "{{ base_image }}"
 
-    - name: 🏗️ VM - Create Clones and Start OKD Masters
+    - name: 🏗️ VM - Create Clones and Start Selected VMs
       ansible.builtin.shell: |
         # 1. Cleanup old VM
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
         
-        # 2. Create Clone from Base Image (Thin Provisioned)
+        # 2. Create Clone from Base Image
         qemu-img create -f qcow2 -F qcow2 -b {{ base_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
         
-        # 3. Download the specific Ignition file for this node
+        # 3. Download the specific Ignition file
         curl -o {{ vm_root }}/{{ item.name }}.ign http://192.168.199.5:8080/ign/{{ item.name }}.ign
         
-        # 4. Launch VM with fw_cfg Ignition injection
+        # 4. Launch VM with fw_cfg
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
@@ -163,20 +171,18 @@
           --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
-      loop:
-        - { name: "okd-bootstrap", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-01", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
+      loop: "{{ vm_list if not bootstrap_only else [vm_list[0]] }}"
 
-    - name: ⚡ AUTOSTART - Enable VM Persistence
+    - name: ⚡ AUTOSTART - Enable Selected VM Persistence
       ansible.builtin.shell: "virsh autostart {{ item.name }}"
-      loop:
-        - { name: "okd-bootstrap" }
-        - { name: "okd-master-01" }
-        - { name: "okd-master-02" }
-        - { name: "okd-master-03" }
+      loop: "{{ vm_list if not bootstrap_only else [vm_list[0]] }}"
 
-    - name: 🔓 STATUS - OKD Deployment Complete
+    - name: ⚡ START - Final Power-On Check
+      ansible.builtin.shell: "virsh start {{ item.name }}"
+      register: start_res
+      failed_when: start_res.rc != 0 and 'already active' not in start_res.stderr
+      loop: "{{ vm_list if not bootstrap_only else [vm_list[0]] }}"
+
+    - name: 🔓 STATUS - Selective Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD Masters are booting from QCOW2 clones. No installation phase required."
+        msg: "OKD Deployment finished. Mode: {{ 'Bootstrap Only' if bootstrap_only else 'Full Cluster' }}"

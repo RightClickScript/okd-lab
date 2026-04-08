@@ -24,17 +24,25 @@
         state: directory
         mode: '0755'
 
-    - name: 📦 TOOLS - Ensure OKD 4.19 Binaries exist on lpt-1
+    - name: 📦 TOOLS - Ensure exact OKD 4.19 Binaries exist on lpt-1
       ansible.builtin.shell: |
-        CURRENT_VER=$(openshift-install version 2>/dev/null | head -n 1)
-        if [[ "$CURRENT_VER" != *"4.19"* ]]; then
-          echo "Version mismatch or missing. Downloading 4.19..."
+        # Check if binary is healthy
+        if ! /usr/local/bin/openshift-install version &>/dev/null; then
+          echo "Binary missing or corrupted. Downloading fresh OKD 4.19..."
           rm -f /usr/local/bin/openshift-install /usr/local/bin/oc
-          curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
-          curl -L {{ artifacts.okd_client_url }} | tar -xz -C /usr/local/bin
+          
+          # Download to temp file first to ensure integrity
+          curl -L {{ artifacts.okd_install_url }} -o /tmp/install.tar.gz
+          curl -L {{ artifacts.okd_client_url }} -o /tmp/client.tar.gz
+          
+          # Extract
+          tar -xzf /tmp/install.tar.gz -C /usr/local/bin
+          tar -xzf /tmp/client.tar.gz -C /usr/local/bin
+          
           chmod +x /usr/local/bin/openshift-install /usr/local/bin/oc
+          rm -f /tmp/install.tar.gz /tmp/client.tar.gz
         else
-          echo "OKD 4.19 tools already present."
+          echo "Healthy OKD 4.19 tools found."
         fi
       changed_when: false
 

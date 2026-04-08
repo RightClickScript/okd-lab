@@ -28,12 +28,8 @@
       ansible.builtin.shell: |
         if ! /usr/local/bin/openshift-install version | grep -q "4.19"; then
           rm -f /usr/local/bin/openshift-install /usr/local/bin/oc
-          curl -L {{ artifacts.okd_install_url }} -o /tmp/install.tar.gz
-          curl -L {{ artifacts.okd_client_url }} -o /tmp/client.tar.gz
-          tar -xzf /tmp/install.tar.gz -C /usr/local/bin
-          tar -xzf /tmp/client.tar.gz -C /usr/local/bin
+          curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
           chmod +x /usr/local/bin/openshift-install /usr/local/bin/oc
-          rm -f /tmp/install.tar.gz /tmp/client.tar.gz
         fi
       changed_when: true
 
@@ -49,7 +45,7 @@
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
-    - name: 🛠️ PATCH - Inject Static IPs, SELinux, and Host Mappings (Ignition 3.2.0)
+    - name: 🛠️ PATCH - Inject Hostnames, Static IPs, and Path Fixes (Ignition 3.2.0)
       ansible.builtin.shell: |
         cat <<EOF > /tmp/patch_ignition.py
         import json, base64, sys
@@ -64,7 +60,13 @@
         
         data["ignition"]["version"] = "3.2.0"
 
-        # 1. SMART-UPDATE CORE USER
+        # 1. IP-BASED FETCH (Bypass DNS Wildcard)
+        if role in ["master", "worker"]:
+            config_str = json.dumps(data)
+            config_str = config_str.replace("api-int.okd.homelab.local", "192.168.199.20")
+            data = json.loads(config_str)
+
+        # 2. SMART-UPDATE CORE USER
         pass_hash = "\$6\$2.AkBiINvK6sG1Xc\$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
         users = data.get("passwd", {}).get("users", [])
         core_user = next((u for u in users if u.get("name") == "core"), None)
@@ -75,7 +77,7 @@
             if "users" not in data["passwd"]: data["passwd"]["users"] = []
             data["passwd"]["users"].append({"name": "core", "passwordHash": pass_hash})
 
-        # 2. NETWORK CONFIG
+        # 3. NETWORK CONFIG
         nm_config = f"""[connection]
         id=enp1s0
         type=ethernet
@@ -88,14 +90,32 @@
         method=manual
         """
         
-        # 3. DNS BYPASS: Hardcode API records in /etc/hosts
-        # This ensures we NEVER hit the UniFi wildcard
-        hosts_config = f"""127.0.0.1   localhost localhost.localdomain
-        ::1         localhost localhost.localdomain
-        192.168.199.20 api-int.okd.homelab.local api.okd.homelab.local
-        """
+        # 4. STORAGE (Hostname + Network + SELinux)
+        if "storage" not in data: data["storage"] = {}
+        if "files" not in data["storage"]: data["storage"]["files"] = []
+        
+        # Add Hostname (CRITICAL FIX)
+        data["storage"]["files"].append({
+            "path": "/etc/hostname",
+            "mode": 420, "overwrite": True,
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(f"{name}.homelab.local\n".encode()).decode() }
+        })
+        
+        # Add Network Config
+        data["storage"]["files"].append({
+            "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
+            "mode": 384, "overwrite": True,
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode() }
+        })
+        
+        # Add SELinux Config
+        data["storage"]["files"].append({
+            "path": "/etc/selinux/config",
+            "mode": 420, "overwrite": True,
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode("SELINUX=permissive\nSELINUXTYPE=targeted\n".encode()).decode() }
+        })
 
-        # 4. SELF-HEALING & MANIFEST JUMPSTART (Bootstrap Only)
+        # 5. BOOTSTRAP ONLY FIXES
         if role == "bootstrap":
             if "systemd" not in data: data["systemd"] = {}
             if "units" not in data["systemd"]: data["systemd"]["units"] = []
@@ -109,34 +129,9 @@
             link_unit = {
                 "name": "manifest-link.service",
                 "enabled": True,
-                "contents": "[Unit]\nDescription=OKD Manifest Compatibility Linker\nBefore=kubelet.service\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/bash -c 'mkdir -p /etc/kubernetes/manifests && ln -sf /opt/openshift/etcd-bootstrap/etc-kubernetes/manifests/*.yaml /etc/kubernetes/manifests/'\nRemainAfterExit=true\n\n[Install]\nWantedBy=multi-user.target\n"
+                "contents": "[Unit]\nDescription=OKD Manifest Linker\nBefore=kubelet.service\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/bash -c 'mkdir -p /etc/kubernetes/manifests && ln -sf /opt/openshift/etcd-bootstrap/etc-kubernetes/manifests/*.yaml /etc/kubernetes/manifests/'\nRemainAfterExit=true\n\n[Install]\nWantedBy=multi-user.target\n"
             }
             data["systemd"]["units"].append(link_unit)
-
-        # 5. STORAGE
-        if "storage" not in data: data["storage"] = {}
-        if "files" not in data["storage"]: data["storage"]["files"] = []
-        
-        # Add Network Config
-        data["storage"]["files"].append({
-            "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
-            "mode": 384, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode() }
-        })
-        
-        # Add /etc/hosts Mapping (The DNS Fix)
-        data["storage"]["files"].append({
-            "path": "/etc/hosts",
-            "mode": 420, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(hosts_config.encode()).decode() }
-        })
-        
-        # Add SELinux Config
-        data["storage"]["files"].append({
-            "path": "/etc/selinux/config",
-            "mode": 420, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode("SELINUX=permissive\nSELINUXTYPE=targeted\n".encode()).decode() }
-        })
         
         with open(f"{{ install_dir }}/{name}.ign", 'w') as f:
             json.dump(data, f)
@@ -164,7 +159,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (DNS Bypass Mode)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (True Enterprise Deployment)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -223,4 +218,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.19 is deploying. Local /etc/hosts mappings injected to bypass UniFi wildcard DNS."
+        msg: "OKD 4.19 is deploying with Unique Hostnames and Static IPs. Quorum will now form."

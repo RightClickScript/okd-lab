@@ -38,11 +38,11 @@
 
     - name: 🔥 IGNITION - Generate Cluster Ignition Files
       ansible.builtin.shell: |
-        rm -f {{ install_dir }}/*.ign
+        rm -rf {{ install_dir }}/*.ign {{ install_dir }}/auth {{ install_dir }}/metadata.json
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
-    - name: 🛠️ PATCH - Inject Static IPs and Self-Healing logic
+    - name: 🛠️ PATCH - Inject Static IPs and Self-Healing logic (Ignition 3.4.0)
       ansible.builtin.shell: |
         cat <<EOF > /tmp/patch_ignition.py
         import json, base64, sys
@@ -55,6 +55,9 @@
         with open(file_path, 'r') as f:
             data = json.load(f)
         
+        # 0. ENSURE IGNITION VERSION IS 3.4.0 FOR SCOS 10
+        data["ignition"]["version"] = "3.4.0"
+
         # 1. ADD PASSWORD FOR CORE USER
         if "passwd" not in data: data["passwd"] = {}
         if "users" not in data["passwd"]: data["passwd"]["users"] = []
@@ -91,6 +94,7 @@
         new_file = {
             "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
             "mode": 384,
+            "overwrite": True,
             "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode() }
         }
         if "storage" not in data: data["storage"] = {}
@@ -177,4 +181,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.20 is deploying. Self-healing patches applied to bypass SCOS 10 image conflicts."
+        msg: "OKD 4.20 is deploying. Ignition 3.4.0 forced to match SCOS 10 specs."

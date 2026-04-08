@@ -26,9 +26,11 @@
 
     - name: 📦 TOOLS - Ensure exact OKD 4.20 Binaries exist on lpt-1
       ansible.builtin.shell: |
-        curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
-        curl -L {{ artifacts.okd_client_url }} | tar -xz -C /usr/local/bin
-      changed_when: true
+        if [[ "$(openshift-install version 2>/dev/null)" != *"4.20"* ]]; then
+          curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
+          curl -L {{ artifacts.okd_client_url }} | tar -xz -C /usr/local/bin
+        fi
+      changed_when: false
 
     - name: 📄 CONFIG - Generate install-config.yaml
       ansible.builtin.template:

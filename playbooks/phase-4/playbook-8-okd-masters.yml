@@ -177,6 +177,7 @@
         virsh undefine {{ item.name }} --remove-all-storage || true
         qemu-img create -f qcow2 -F qcow2 -b {{ base_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
         curl -o {{ vm_root }}/{{ item.name }}.ign http://192.168.199.5:8080/ign/{{ item.name }}.ign
+        # 4. Launch VM with fw_cfg and DNS override
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
@@ -189,8 +190,8 @@
           --noautoconsole \
           --wait 0 \
           --events on_poweroff=restart,on_reboot=restart,on_crash=restart \
-          --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign"
-      args:
+          --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign -append 'nameserver=192.168.199.10'"
+
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
         - { name: "okd-bootstrap", ram: 32768, cpu: 4, disk: 100 }

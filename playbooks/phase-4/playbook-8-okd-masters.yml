@@ -43,9 +43,10 @@
         dest: "{{ install_dir }}/install-config.yaml"
         mode: "0644"
 
-    - name: 🔥 IGNITION - Generate Cluster Ignition Files
+    - name: 🔥 IGNITION - Nuclear Wipe and Regenerate
       ansible.builtin.shell: |
-        rm -rf {{ install_dir }}/*.ign {{ install_dir }}/auth {{ install_dir }}/metadata.json
+        # Nuclear wipe: Keep only the config file
+        find {{ install_dir }} -mindepth 1 ! -name 'install-config.yaml' -delete
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
@@ -62,7 +63,6 @@
         with open(file_path, 'r') as f:
             data = json.load(f)
         
-        # 0. VERSION ALIGNMENT
         data["ignition"]["version"] = "3.2.0"
 
         # 1. SMART-UPDATE CORE USER
@@ -94,15 +94,12 @@
             if "systemd" not in data: data["systemd"] = {}
             if "units" not in data["systemd"]: data["systemd"]["units"] = []
             
-            # Fix node-image-pull failure
             pull_dropin = {"name": "10-ignore-failure.conf", "contents": "[Service]\nExecStart=\nExecStart=/usr/bin/bash -c '/usr/local/bin/node-image-pull.sh || true'\n"}
             data["systemd"]["units"].append({"name": "node-image-pull.service", "dropins": [pull_dropin]})
 
-            # Fix node-image-finish failure
             finish_dropin = {"name": "10-ignore-failure.conf", "contents": "[Service]\nSuccessExitStatus=1\n"}
             data["systemd"]["units"].append({"name": "node-image-finish.service", "dropins": [finish_dropin]})
 
-            # AUTO-LINK MANIFESTS (The fix for the missing Etcd/API pods)
             link_unit = {
                 "name": "manifest-link.service",
                 "enabled": True,
@@ -142,7 +139,7 @@
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03]
       changed_when: false
 
-    - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
+    - name: 📤 PUBLISH - Force Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
         src: "{{ install_dir }}/{{ item }}.ign"
         dest: "{{ distribution_root }}/ign/{{ item }}.ign"
@@ -152,7 +149,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Reusable Automation)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Nuclear Redeploy)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -211,4 +208,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.19 is deploying with Automated Path Mapping and SELinux Fixes. Reusable state achieved."
+        msg: "OKD 4.19 is deploying with NUCLEAR REFRESH of certificates and OS images."

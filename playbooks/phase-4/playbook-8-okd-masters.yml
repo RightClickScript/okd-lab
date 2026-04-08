@@ -42,7 +42,7 @@
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
-    - name: 🛠️ PATCH - Inject Static IPs and Self-Healing logic (Ignition 3.4.0)
+    - name: 🛠️ PATCH - Inject Static IPs and Self-Healing logic (No Duplicates)
       ansible.builtin.shell: |
         cat <<EOF > /tmp/patch_ignition.py
         import json, base64, sys
@@ -55,14 +55,20 @@
         with open(file_path, 'r') as f:
             data = json.load(f)
         
-        # 0. ENSURE IGNITION VERSION IS 3.4.0 FOR SCOS 10
+        # 0. ENSURE IGNITION VERSION IS 3.4.0
         data["ignition"]["version"] = "3.4.0"
 
-        # 1. ADD PASSWORD FOR CORE USER
-        if "passwd" not in data: data["passwd"] = {}
-        if "users" not in data["passwd"]: data["passwd"]["users"] = []
+        # 1. SMART-UPDATE CORE USER (Avoid Duplicates)
         pass_hash = "\$6\$2.AkBiINvK6sG1Xc\$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
-        data["passwd"]["users"].append({"name": "core", "passwordHash": pass_hash})
+        users = data.get("passwd", {}).get("users", [])
+        core_user = next((u for u in users if u.get("name") == "core"), None)
+        
+        if core_user:
+            core_user["passwordHash"] = pass_hash
+        else:
+            if "passwd" not in data: data["passwd"] = {}
+            if "users" not in data["passwd"]: data["passwd"]["users"] = []
+            data["passwd"]["users"].append({"name": "core", "passwordHash": pass_hash})
 
         # 2. INJECT NETWORKMANAGER STATIC IP CONFIG
         nm_config = f"""[connection]
@@ -80,16 +86,18 @@
         # 3. SELF-HEALING: FORCE NODE-IMAGE-PULL TO SUCCEED
         if role == "bootstrap":
             dropin_content = "[Service]\nExecStart=\nExecStart=/usr/bin/bash -c '/usr/local/bin/node-image-pull.sh || true'\n"
-            new_dropin = {
-                "name": "node-image-pull.service",
-                "dropins": [{
-                    "name": "10-ignore-failure.conf",
-                    "contents": dropin_content
-                }]
-            }
-            if "systemd" not in data: data["systemd"] = {}
-            if "units" not in data["systemd"]: data["systemd"]["units"] = []
-            data["systemd"]["units"].append(new_dropin)
+            units = data.get("systemd", {}).get("units", [])
+            pull_unit = next((u for u in units if u.get("name") == "node-image-pull.service"), None)
+            
+            new_dropin = {"name": "10-ignore-failure.conf", "contents": dropin_content}
+            
+            if pull_unit:
+                if "dropins" not in pull_unit: pull_unit["dropins"] = []
+                pull_unit["dropins"].append(new_dropin)
+            else:
+                if "systemd" not in data: data["systemd"] = {}
+                if "units" not in data["systemd"]: data["systemd"]["units"] = []
+                data["systemd"]["units"].append({"name": "node-image-pull.service", "dropins": [new_dropin]})
 
         new_file = {
             "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
@@ -110,6 +118,12 @@
         python3 /tmp/patch_ignition.py okd-master-02 192.168.199.22 master
         python3 /tmp/patch_ignition.py okd-master-03 192.168.199.23 master
       changed_when: true
+
+    - name: ✅ VALIDATE - Ensure Patched Ignition is Valid
+      ansible.builtin.shell: |
+        cat {{ install_dir }}/{{ item }}.ign | docker run --rm -i quay.io/coreos/ignition-validate:release -
+      loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03]
+      changed_when: false
 
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
@@ -181,4 +195,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.20 is deploying. Ignition 3.4.0 forced to match SCOS 10 specs."
+        msg: "OKD 4.20 is deploying. Ignition files validated and duplicates removed."

@@ -26,25 +26,16 @@
 
     - name: 📦 TOOLS - Ensure exact OKD 4.19 Binaries exist on lpt-1
       ansible.builtin.shell: |
-        # Check if binary is healthy
-        if ! /usr/local/bin/openshift-install version &>/dev/null; then
-          echo "Binary missing or corrupted. Downloading fresh OKD 4.19..."
+        if ! /usr/local/bin/openshift-install version | grep -q "4.19"; then
           rm -f /usr/local/bin/openshift-install /usr/local/bin/oc
-          
-          # Download to temp file first to ensure integrity
           curl -L {{ artifacts.okd_install_url }} -o /tmp/install.tar.gz
           curl -L {{ artifacts.okd_client_url }} -o /tmp/client.tar.gz
-          
-          # Extract
           tar -xzf /tmp/install.tar.gz -C /usr/local/bin
           tar -xzf /tmp/client.tar.gz -C /usr/local/bin
-          
           chmod +x /usr/local/bin/openshift-install /usr/local/bin/oc
           rm -f /tmp/install.tar.gz /tmp/client.tar.gz
-        else
-          echo "Healthy OKD 4.19 tools found."
         fi
-      changed_when: false
+      changed_when: true
 
     - name: 📄 CONFIG - Generate install-config.yaml
       ansible.builtin.template:
@@ -156,7 +147,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (SCOS 9 Revert)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Forced Refresh)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -166,18 +157,26 @@
     base_image: "{{ vm_root }}/scos-base.qcow2"
 
   tasks:
-    - name: 💿 BASE - Download SCOS QCOW2 Image to SMS-1
+    - name: 🧹 CLEAN - Wipe Old SCOS 10 Base Image
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ base_image }}"
+        - "{{ base_image }}.gz"
+      when: artifacts.scos_qcow2_url is changed or true # Force cleanup this time
+
+    - name: 💿 BASE - Download SCOS 9 QCOW2 Image to SMS-1
       ansible.builtin.get_url:
         url: "{{ artifacts.scos_qcow2_url }}"
         dest: "{{ base_image }}.gz"
         mode: "0644"
-        force: false
+        force: true
 
     - name: 📦 EXTRACT - Decompress Base Image
       ansible.builtin.shell: |
         gunzip -c {{ base_image }}.gz > {{ base_image }}
-      args:
-        creates: "{{ base_image }}"
+      changed_when: true
 
     - name: 🏗️ VM - Create Clones and Start OKD Masters
       ansible.builtin.shell: |
@@ -216,4 +215,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.19 is deploying. SELinux set to PERMISSIVE via Ignition to bypass SCOS filesystem blocks."
+        msg: "OKD 4.19 is deploying with FORCED SCOS 9 base image."

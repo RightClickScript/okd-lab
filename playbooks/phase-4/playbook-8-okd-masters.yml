@@ -164,7 +164,6 @@
       loop:
         - "{{ base_image }}"
         - "{{ base_image }}.gz"
-      when: artifacts.scos_qcow2_url is changed or true # Force cleanup this time
 
     - name: 💿 BASE - Download SCOS 9 QCOW2 Image to SMS-1
       ansible.builtin.get_url:

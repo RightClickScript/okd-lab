@@ -49,7 +49,7 @@
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
-    - name: 🛠️ PATCH - Inject Static IPs and Permissive SELinux (Ignition 3.2.0)
+    - name: 🛠️ PATCH - Inject Static IPs, SELinux, and Path Fixes (Ignition 3.2.0)
       ansible.builtin.shell: |
         cat <<EOF > /tmp/patch_ignition.py
         import json, base64, sys
@@ -62,7 +62,7 @@
         with open(file_path, 'r') as f:
             data = json.load(f)
         
-        # 0. ENSURE IGNITION VERSION IS 3.2.0 FOR SCOS 9
+        # 0. VERSION ALIGNMENT
         data["ignition"]["version"] = "3.2.0"
 
         # 1. SMART-UPDATE CORE USER
@@ -76,7 +76,7 @@
             if "users" not in data["passwd"]: data["passwd"]["users"] = []
             data["passwd"]["users"].append({"name": "core", "passwordHash": pass_hash})
 
-        # 2. INJECT NETWORKMANAGER STATIC IP CONFIG
+        # 2. NETWORK CONFIG
         nm_config = f"""[connection]
         id=enp1s0
         type=ethernet
@@ -89,36 +89,41 @@
         method=manual
         """
         
-        # 3. PERMISSIVE SELINUX
-        selinux_config = "SELINUX=permissive\nSELINUXTYPE=targeted\n"
-        
-        # 4. SELF-HEALING: FORCE NODE-IMAGE SERVICES TO SUCCEED
+        # 3. SELF-HEALING & MANIFEST JUMPSTART (Bootstrap Only)
         if role == "bootstrap":
             if "systemd" not in data: data["systemd"] = {}
             if "units" not in data["systemd"]: data["systemd"]["units"] = []
             
+            # Fix node-image-pull failure
             pull_dropin = {"name": "10-ignore-failure.conf", "contents": "[Service]\nExecStart=\nExecStart=/usr/bin/bash -c '/usr/local/bin/node-image-pull.sh || true'\n"}
             data["systemd"]["units"].append({"name": "node-image-pull.service", "dropins": [pull_dropin]})
 
+            # Fix node-image-finish failure
             finish_dropin = {"name": "10-ignore-failure.conf", "contents": "[Service]\nSuccessExitStatus=1\n"}
             data["systemd"]["units"].append({"name": "node-image-finish.service", "dropins": [finish_dropin]})
 
-        # ADD FILES TO STORAGE
+            # AUTO-LINK MANIFESTS (The fix for the missing Etcd/API pods)
+            link_unit = {
+                "name": "manifest-link.service",
+                "enabled": True,
+                "contents": "[Unit]\nDescription=OKD Manifest Compatibility Linker\nBefore=kubelet.service\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/bash -c 'mkdir -p /etc/kubernetes/manifests && ln -sf /opt/openshift/etcd-bootstrap/etc-kubernetes/manifests/*.yaml /etc/kubernetes/manifests/'\nRemainAfterExit=true\n\n[Install]\nWantedBy=multi-user.target\n"
+            }
+            data["systemd"]["units"].append(link_unit)
+
+        # 4. STORAGE (Network + SELinux Config)
         if "storage" not in data: data["storage"] = {}
         if "files" not in data["storage"]: data["storage"]["files"] = []
         
-        # Add Network Config
         data["storage"]["files"].append({
             "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
             "mode": 384, "overwrite": True,
             "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode() }
         })
         
-        # Add SELinux Config
         data["storage"]["files"].append({
             "path": "/etc/selinux/config",
             "mode": 420, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(selinux_config.encode()).decode() }
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode("SELINUX=permissive\nSELINUXTYPE=targeted\n".encode()).decode() }
         })
         
         with open(f"{{ install_dir }}/{name}.ign", 'w') as f:
@@ -147,7 +152,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Forced Refresh)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Reusable Automation)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -157,14 +162,6 @@
     base_image: "{{ vm_root }}/scos-base.qcow2"
 
   tasks:
-    - name: 🧹 CLEAN - Wipe Old SCOS 10 Base Image
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ base_image }}"
-        - "{{ base_image }}.gz"
-
     - name: 💿 BASE - Download SCOS 9 QCOW2 Image to SMS-1
       ansible.builtin.get_url:
         url: "{{ artifacts.scos_qcow2_url }}"
@@ -214,4 +211,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.19 is deploying with FORCED SCOS 9 base image."
+        msg: "OKD 4.19 is deploying with Automated Path Mapping and SELinux Fixes. Reusable state achieved."

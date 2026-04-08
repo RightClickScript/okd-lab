@@ -76,12 +76,12 @@
         state: absent
       loop: ["api.okd", "api-int.okd"]
 
-    - name: 📂 OKD - Create API Records (Bootstrap ONLY)
+    - name: 📂 OKD - Create API Records (Point to Load Balancer)
       ansible.windows.win_dns_record:
         name: "{{ item }}"
         zone: "{{ ad.domain_FQDN }}"
         type: "A"
-        value: "192.168.199.20"
+        value: "{{ network.okd_lb_ip }}"
         state: present
       loop:
         - "api.okd"

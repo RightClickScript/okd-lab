@@ -1,0 +1,76 @@
+---
+- name: Phase 3-6 - Deploy OKD Load Balancer (HAProxy)
+  hosts: local_spark
+  become: true
+  gather_facts: false
+
+  vars:
+    lb_ip: "{{ network.okd_lb_ip }}"
+    api_port: 6443
+    mcs_port: 22623
+    nodes:
+      - { name: "okd-bootstrap", ip: "192.168.199.20" }
+      - { name: "okd-master-01", ip: "192.168.199.21" }
+      - { name: "okd-master-02", ip: "192.168.199.22" }
+      - { name: "okd-master-03", ip: "192.168.199.23" }
+
+  tasks:
+    - name: 🌐 NETWORK - Add VIP to Bridge Interface
+      ansible.builtin.shell: |
+        if ! ip addr show br0 | grep -q "{{ lb_ip }}"; then
+          ip addr add {{ lb_ip }}/24 dev br0
+        fi
+      changed_when: false
+
+    - name: 📦 INSTALL - Install HAProxy
+      ansible.builtin.apt:
+        name: haproxy
+        state: present
+        update_cache: true
+
+    - name: ⚙️ CONFIG - Generate haproxy.cfg
+      ansible.builtin.blockinfile:
+        path: /etc/haproxy/haproxy.cfg
+        marker: "# {mark} OKD LOAD BALANCER CONFIG"
+        block: |
+          #---------------------------------------------------------------------
+          # OKD API (6443)
+          #---------------------------------------------------------------------
+          frontend okd-api
+              bind {{ lb_ip }}:{{ api_port }}
+              mode tcp
+              option tcplog
+              default_backend okd-api-backend
+
+          backend okd-api-backend
+              mode tcp
+              balance roundrobin
+              {% for node in nodes %}
+              server {{ node.name }} {{ node.ip }}:{{ api_port }} check verify none
+              {% endfor %}
+
+          #---------------------------------------------------------------------
+          # OKD Machine Config Server (22623)
+          #---------------------------------------------------------------------
+          frontend okd-mcs
+              bind {{ lb_ip }}:{{ mcs_port }}
+              mode tcp
+              option tcplog
+              default_backend okd-mcs-backend
+
+          backend okd-mcs-backend
+              mode tcp
+              balance roundrobin
+              {% for node in nodes %}
+              server {{ node.name }} {{ node.ip }}:{{ mcs_port }} check verify none
+              {% endfor %}
+
+    - name: 🔄 RESTART - Apply HAProxy Configuration
+      ansible.builtin.systemd:
+        name: haproxy
+        state: restarted
+        enabled: true
+
+    - name: 🔓 STATUS - Load Balancer is Live
+      ansible.builtin.debug:
+        msg: "OKD Load Balancer is now listening on {{ lb_ip }} for ports 6443 and 22623."

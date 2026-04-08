@@ -177,3 +177,5 @@ playbooks/artifacts/**/*
 !playbooks/artifacts/.gitkeep
 !playbooks/artifacts/**/README.md
 
+/LB-example/
+

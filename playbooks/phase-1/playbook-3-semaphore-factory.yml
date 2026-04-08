@@ -20,6 +20,7 @@
       - { name: "Phase 3: Identity (Deploy Windows VM)", playbook: "playbooks/phase-3/playbook-5-identity.yml" }
       - { name: "Phase 3: Identity (Configure AD Domain)", playbook: "playbooks/phase-3/playbook-5b-ad-config.yml" }
       - { name: "Phase 3: Identity (Fix DNS & OKD Records)", playbook: "playbooks/phase-3/playbook-5c-dns-fix.yml" }
+      - { name: "Phase 3: OKD Load Balancer (HAProxy)", playbook: "playbooks/phase-3/playbook-6-load-balancer.yml" }
       - { name: "Phase 3: Morpheus Appliance", playbook: "playbooks/phase-3/playbook-7-morpheus.yml" }
       - { name: "Phase 4: OKD Control Plane (Masters)", playbook: "playbooks/phase-4/playbook-8-okd-masters.yml" }
       - { name: "Phase 4: OKD Workers (NUCs Join)", playbook: "playbooks/phase-4/playbook-9-okd-workers.yml" }

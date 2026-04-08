@@ -12,6 +12,7 @@ all:
       mgmt_gateway: "192.168.199.254"
       primary_dns: "192.168.199.10" # Promoted from UniFi to Windows DC
       secondary_dns: "192.168.1.1"
+      okd_lb_ip: "192.168.199.60"   # Dedicated VIP for OKD API
       vlan198_id: 198
       search_domains: ["homelab.local"]
 

@@ -53,7 +53,6 @@
         if "users" not in data["passwd"]: data["passwd"]["users"] = []
         
         core_user = next((u for u in data["passwd"]["users"] if u["name"] == "core"), None)
-        # Properly escaped dollar signs for shell cat block
         pass_hash = "\$6\$2.AkBiINvK6sG1Xc\$4IpxnmmRZ0HhXgtndXgOIs7YYQ7cXdV.ub3Lmus3OBDJYqMi5HHzw/bGSlDUmGIFfTVjVB4.vIrNeeQPUrnKW1"
         
         if core_user:
@@ -119,7 +118,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Console-Ready)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Enterprise Lifecycle)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -138,7 +137,6 @@
 
     - name: 🏗️ VM - Create OKD Master and Bootstrap VMs
       ansible.builtin.shell: |
-        # Destroy existing VM
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
         
@@ -153,8 +151,8 @@
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
-          --events on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip=dhcp nameserver=192.168.199.10 coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img ignition.firstboot ignition.platform.id=qemu ignition.config.url={{ hub_url }}/ign/{{ item.name }}.ign"
+          --events on_poweroff=restart,on_reboot=restart,on_crash=restart \
+          --extra-args "rd.neednet=1 ip=dhcp nameserver=192.168.199.10 coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -163,20 +161,15 @@
         - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
 
-    - name: ⏳ WAIT - Wait for installation to finish (VMs to stop)
-      ansible.builtin.shell: "virsh list --name | grep {{ item.name }}"
-      register: vm_list
-      until: vm_list.rc != 0
-      retries: 60
-      delay: 30
+    - name: ⚡ AUTOSTART - Enable VM Persistence
+      ansible.builtin.shell: "virsh autostart {{ item.name }}"
       loop:
         - { name: "okd-bootstrap" }
         - { name: "okd-master-01" }
         - { name: "okd-master-02" }
         - { name: "okd-master-03" }
-      ignore_errors: true
 
-    - name: ⚡ START - Ensure VMs are Running from Disk
+    - name: ⚡ START - Final Power-On Check
       ansible.builtin.shell: "virsh start {{ item.name }}"
       register: start_res
       failed_when: start_res.rc != 0 and 'already active' not in start_res.stderr
@@ -188,4 +181,4 @@
 
     - name: 🔓 STATUS - OKD Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD Masters are now console-accessible during install. Login: core / Admin@12345"
+        msg: "OKD Masters are now enterprise-hardened. Any shutdown/reboot signal will force a power cycle."

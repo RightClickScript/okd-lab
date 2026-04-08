@@ -117,13 +117,13 @@
     - name: 💿 BASE - Download SCOS QCOW2 Image to SMS-1
       ansible.builtin.get_url:
         url: "{{ artifacts.scos_qcow2_url }}"
-        dest: "{{ base_image }}.xz"
+        dest: "{{ base_image }}.gz"
         mode: "0644"
         force: false
 
     - name: 📦 EXTRACT - Decompress Base Image
       ansible.builtin.shell: |
-        xz -d -c {{ base_image }}.xz > {{ base_image }}
+        gunzip -c {{ base_image }}.gz > {{ base_image }}
       args:
         creates: "{{ base_image }}"
 

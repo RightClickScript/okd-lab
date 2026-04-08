@@ -58,10 +58,7 @@
         if core_user:
             core_user["passwordHash"] = pass_hash
         else:
-            data["passwd"]["users"].append({
-                "name": "core",
-                "passwordHash": pass_hash
-            })
+            data["passwd"]["users"].append({"name": "core", "passwordHash": pass_hash})
 
         nm_config = f"""[connection]
         id=enp1s0
@@ -97,17 +94,6 @@
         python3 /tmp/patch_ignition.py okd-master-03 192.168.199.23 master
       changed_when: true
 
-    - name: 💿 BOOT - Extract Kernel, Initrd, and RootFS from SCOS ISO
-      ansible.builtin.shell: |
-        mkdir -p /tmp/scos-mnt
-        mount -o loop {{ distribution_root }}/iso/scos-live.x86_64.iso /tmp/scos-mnt
-        cp /tmp/scos-mnt/images/pxeboot/vmlinuz {{ distribution_root }}/iso/vmlinuz
-        cp /tmp/scos-mnt/images/pxeboot/initrd.img {{ distribution_root }}/iso/initrd.img
-        cp /tmp/scos-mnt/images/pxeboot/rootfs.img {{ distribution_root }}/iso/rootfs.img
-        umount /tmp/scos-mnt
-        chmod 644 {{ distribution_root }}/iso/vmlinuz {{ distribution_root }}/iso/initrd.img {{ distribution_root }}/iso/rootfs.img
-      changed_when: true
-
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
         src: "{{ install_dir }}/{{ item }}.ign"
@@ -118,41 +104,55 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Enterprise Lifecycle)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (QCOW2 Direct Boot)
   hosts: management_plane
   become: true
   gather_facts: false
 
   vars:
     vm_root: "/mnt/data/vms"
-    hub_url: "http://192.168.199.5:8080"
+    base_image: "{{ vm_root }}/scos-base.qcow2"
 
   tasks:
-    - name: 💿 BOOT - Download Kernel and Initrd to SMS-1
+    - name: 💿 BASE - Download SCOS QCOW2 Image to SMS-1
       ansible.builtin.get_url:
-        url: "{{ hub_url }}/iso/{{ item }}"
-        dest: "{{ vm_root }}/{{ item }}"
+        url: "{{ artifacts.scos_qcow2_url }}"
+        dest: "{{ base_image }}.xz"
         mode: "0644"
-      loop: [vmlinuz, initrd.img]
+        force: false
 
-    - name: 🏗️ VM - Create OKD Master and Bootstrap VMs
+    - name: 📦 EXTRACT - Decompress Base Image
       ansible.builtin.shell: |
+        xz -d -c {{ base_image }}.xz > {{ base_image }}
+      args:
+        creates: "{{ base_image }}"
+
+    - name: 🏗️ VM - Create Clones and Start OKD Masters
+      ansible.builtin.shell: |
+        # 1. Cleanup old VM
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
         
+        # 2. Create Clone from Base Image (Thin Provisioned)
+        qemu-img create -f qcow2 -F qcow2 -b {{ base_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
+        
+        # 3. Download the specific Ignition file for this node
+        curl -o {{ vm_root }}/{{ item.name }}.ign http://192.168.199.5:8080/ign/{{ item.name }}.ign
+        
+        # 4. Launch VM with fw_cfg Ignition injection
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
-          --disk path={{ vm_root }}/{{ item.name }}.qcow2,size={{ item.disk }},bus=virtio \
-          --install kernel={{ vm_root }}/vmlinuz,initrd={{ vm_root }}/initrd.img \
+          --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
+          --import \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \
           --events on_poweroff=restart,on_reboot=restart,on_crash=restart \
-          --extra-args "rd.neednet=1 ip=dhcp nameserver=192.168.199.10 coreos.inst.install_dev=/dev/vda coreos.inst.ignition_url={{ hub_url }}/ign/{{ item.name }}.ign coreos.inst.reboot coreos.live.rootfs_url={{ hub_url }}/iso/rootfs.img"
+          --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
@@ -169,16 +169,6 @@
         - { name: "okd-master-02" }
         - { name: "okd-master-03" }
 
-    - name: ⚡ START - Final Power-On Check
-      ansible.builtin.shell: "virsh start {{ item.name }}"
-      register: start_res
-      failed_when: start_res.rc != 0 and 'already active' not in start_res.stderr
-      loop:
-        - { name: "okd-bootstrap" }
-        - { name: "okd-master-01" }
-        - { name: "okd-master-02" }
-        - { name: "okd-master-03" }
-
     - name: 🔓 STATUS - OKD Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD Masters are now enterprise-hardened. Any shutdown/reboot signal will force a power cycle."
+        msg: "OKD Masters are booting from QCOW2 clones. No installation phase required."

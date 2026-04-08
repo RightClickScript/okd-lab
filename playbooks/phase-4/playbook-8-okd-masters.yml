@@ -45,7 +45,6 @@
 
     - name: 🔥 IGNITION - Nuclear Wipe and Regenerate
       ansible.builtin.shell: |
-        # Nuclear wipe: Keep only the config file
         find {{ install_dir }} -mindepth 1 ! -name 'install-config.yaml' -delete
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
@@ -76,7 +75,7 @@
             if "users" not in data["passwd"]: data["passwd"]["users"] = []
             data["passwd"]["users"].append({"name": "core", "passwordHash": pass_hash})
 
-        # 2. NETWORK CONFIG
+        # 2. NETWORK CONFIG (Forcing DNS to 192.168.199.10)
         nm_config = f"""[connection]
         id=enp1s0
         type=ethernet
@@ -107,7 +106,7 @@
             }
             data["systemd"]["units"].append(link_unit)
 
-        # 4. STORAGE (Network + SELinux Config)
+        # 4. STORAGE
         if "storage" not in data: data["storage"] = {}
         if "files" not in data["storage"]: data["storage"]["files"] = []
         
@@ -139,7 +138,7 @@
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03]
       changed_when: false
 
-    - name: 📤 PUBLISH - Force Move Patched Ignition to Distro Hub
+    - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
         src: "{{ install_dir }}/{{ item }}.ign"
         dest: "{{ distribution_root }}/ign/{{ item }}.ign"
@@ -149,7 +148,7 @@
         group: 1001
       loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (Nuclear Redeploy)
+- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (True One-Click)
   hosts: management_plane
   become: true
   gather_facts: false
@@ -177,7 +176,6 @@
         virsh undefine {{ item.name }} --remove-all-storage || true
         qemu-img create -f qcow2 -F qcow2 -b {{ base_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk }}G
         curl -o {{ vm_root }}/{{ item.name }}.ign http://192.168.199.5:8080/ign/{{ item.name }}.ign
-        # 4. Launch VM with fw_cfg and DNS override
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
@@ -190,8 +188,8 @@
           --noautoconsole \
           --wait 0 \
           --events on_poweroff=restart,on_reboot=restart,on_crash=restart \
-          --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign -append 'nameserver=192.168.199.10'"
-
+          --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign"
+      args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
         - { name: "okd-bootstrap", ram: 32768, cpu: 4, disk: 100 }
@@ -209,4 +207,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.19 is deploying with NUCLEAR REFRESH of certificates and OS images."
+        msg: "OKD 4.19 is deploying with direct QCOW2 boot. DNS is handled by internal Ignition NetworkManager config."

@@ -24,6 +24,14 @@
         state: directory
         mode: '0755'
 
+    - name: 📦 TOOLS - Ensure exact OKD 4.19 Binaries exist on lpt-1
+      ansible.builtin.shell: |
+        if ! openshift-install version | grep -q "4.19"; then
+          curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
+          curl -L {{ artifacts.okd_client_url }} | tar -xz -C /usr/local/bin
+        fi
+      changed_when: true
+
     - name: 📄 CONFIG - Generate install-config.yaml
       ansible.builtin.template:
         src: "../../templates/okd/install-config.yaml.j2"

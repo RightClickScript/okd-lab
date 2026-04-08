@@ -37,10 +37,10 @@
         mode: "0644"
 
     - name: 🔥 IGNITION - Generate Cluster Ignition Files
-      ansible.builtin.command:
-        cmd: "openshift-install create ignition-configs --dir={{ install_dir }}"
-      args:
-        creates: "{{ install_dir }}/bootstrap.ign"
+      ansible.builtin.shell: |
+        rm -f {{ install_dir }}/*.ign
+        openshift-install create ignition-configs --dir={{ install_dir }}
+      changed_when: true
 
     - name: 🛠️ PATCH - Inject Static IPs and Self-Healing logic
       ansible.builtin.shell: |
@@ -76,16 +76,17 @@
         
         # 3. SELF-HEALING: FORCE NODE-IMAGE-PULL TO SUCCEED
         if role == "bootstrap":
-            # Add a systemd drop-in to ignore the specific "ref already exists" error
             dropin_content = "[Service]\nExecStart=\nExecStart=/usr/bin/bash -c '/usr/local/bin/node-image-pull.sh || true'\n"
             new_dropin = {
-                "path": "/etc/systemd/system/node-image-pull.service.d/10-ignore-failure.conf",
-                "mode": 384,
-                "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(dropin_content.encode()).decode() }
+                "name": "node-image-pull.service",
+                "dropins": [{
+                    "name": "10-ignore-failure.conf",
+                    "contents": dropin_content
+                }]
             }
-            if "storage" not in data: data["storage"] = {}
-            if "files" not in data["storage"]: data["storage"]["files"] = []
-            data["storage"]["files"].append(new_dropin)
+            if "systemd" not in data: data["systemd"] = {}
+            if "units" not in data["systemd"]: data["systemd"]["units"] = []
+            data["systemd"]["units"].append(new_dropin)
 
         new_file = {
             "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
@@ -165,6 +166,14 @@
         - { name: "okd-master-01", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
+
+    - name: ⚡ AUTOSTART - Enable VM Persistence
+      ansible.builtin.shell: "virsh autostart {{ item.name }}"
+      loop:
+        - { name: "okd-bootstrap" }
+        - { name: "okd-master-01" }
+        - { name: "okd-master-02" }
+        - { name: "okd-master-03" }
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:

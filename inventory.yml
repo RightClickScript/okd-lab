@@ -65,7 +65,7 @@ all:
     artifacts:
       git_repo_url: "https://github.com/RightClickScript/okd-lab.git"
       scos_iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-live-iso.x86_64.iso"
-      scos_qcow2_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-qemu.x86_64.qcow2.gz"
+      scos_qcow2_url: "https://rhcos.mirror.openshift.com/art/storage/prod/streams/c10s/builds/10.0.20250628-0/x86_64/scos-10.0.20250628-0-qemu.x86_64.qcow2.gz"
       okd_release_image: "quay.io/okd/scos-release:4.20.0-okd-scos.0"
       okd_client_url: "https://github.com/okd-project/okd/releases/download/4.20.0-okd-scos.0/openshift-client-linux-4.20.0-okd-scos.0.tar.gz"
       okd_install_url: "https://github.com/okd-project/okd/releases/download/4.20.0-okd-scos.0/openshift-install-linux-4.20.0-okd-scos.0.tar.gz"

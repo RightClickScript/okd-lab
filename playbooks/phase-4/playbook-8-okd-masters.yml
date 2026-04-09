@@ -198,6 +198,7 @@
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
           --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
+          --memballoon model=virtio \
           --import \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \

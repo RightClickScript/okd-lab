@@ -1,11 +1,11 @@
 ---
-- name: Phase 3-6 - Deploy OKD Load Balancer (HAProxy)
+- name: Phase 3-6 - Deploy OKD Load Balancer (Persistent HAProxy)
   hosts: local_spark
   become: true
   gather_facts: false
 
   vars:
-    lb_ip: "{{ network.okd_lb_ip }}"
+    lb_ip: "192.168.199.60"
     api_port: 6443
     mcs_port: 22623
     nodes:
@@ -15,12 +15,16 @@
       - { name: "okd-master-03", ip: "192.168.199.23" }
 
   tasks:
-    - name: 🌐 NETWORK - Add VIP to Bridge Interface
-      ansible.builtin.shell: |
-        if ! ip addr show br0 | grep -q "{{ lb_ip }}"; then
-          ip addr add {{ lb_ip }}/24 dev br0
-        fi
-      changed_when: false
+    - name: 🌐 NETWORK - Ensure VIP is persistent in Netplan
+      ansible.builtin.replace:
+        path: /etc/netplan/99-homelab-standard.yaml
+        regexp: '- 192.168.199.5/24'
+        replace: "- 192.168.199.5/24\n      - {{ lb_ip }}/24"
+      register: netplan_change
+
+    - name: 🔄 NETWORK - Apply Netplan (if changed)
+      ansible.builtin.shell: "netplan apply"
+      when: netplan_change.changed
 
     - name: 📦 INSTALL - Install HAProxy
       ansible.builtin.apt:
@@ -28,7 +32,7 @@
         state: present
         update_cache: true
 
-    - name: ⚙️ CONFIG - Generate haproxy.cfg
+    - name: ⚙️ CONFIG - Generate haproxy.cfg (No-Fail Checks)
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
@@ -45,8 +49,9 @@
           backend okd-api-backend
               mode tcp
               balance roundrobin
+              # No 'check' here ensures we always attempt connection
               {% for node in nodes %}
-              server {{ node.name }} {{ node.ip }}:{{ api_port }} check verify none
+              server {{ node.name }} {{ node.ip }}:{{ api_port }}
               {% endfor %}
 
           #---------------------------------------------------------------------
@@ -62,7 +67,7 @@
               mode tcp
               balance roundrobin
               {% for node in nodes %}
-              server {{ node.name }} {{ node.ip }}:{{ mcs_port }} check verify none
+              server {{ node.name }} {{ node.ip }}:{{ mcs_port }}
               {% endfor %}
 
     - name: 🔄 RESTART - Apply HAProxy Configuration
@@ -73,4 +78,4 @@
 
     - name: 🔓 STATUS - Load Balancer is Live
       ansible.builtin.debug:
-        msg: "OKD Load Balancer is now listening on {{ lb_ip }} for ports 6443 and 22623."
+        msg: "OKD Load Balancer is persistent and live on {{ lb_ip }}."

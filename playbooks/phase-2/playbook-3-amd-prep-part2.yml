@@ -7,6 +7,8 @@
   vars:
     storage_pool_path: "/mnt/data/vms"
     storage_pool_name: "datapool"
+    # 32GB in bytes (32 * 1024 * 1024 * 1024)
+    zfs_arc_max_bytes: 34359738368
 
   tasks:
     - name: 🏗️ HYPERVISOR - Install KVM & Libvirt
@@ -29,6 +31,18 @@
         name: bishop
         groups: libvirt,kvm
         append: true
+
+    - name: 🧠 TUNING - Cap ZFS ARC to 32GB
+      block:
+        - name: Write ZFS module configuration
+          ansible.builtin.copy:
+            dest: /etc/modprobe.d/zfs.conf
+            content: "options zfs zfs_arc_max={{ zfs_arc_max_bytes }}\n"
+            mode: '0644'
+
+        - name: Apply ZFS ARC limit live
+          ansible.builtin.shell: "echo {{ zfs_arc_max_bytes }} > /sys/module/zfs/parameters/zfs_arc_max"
+          changed_when: true
 
     - name: 📁 STORAGE - Initialize ZFS Datapool
       block:
@@ -97,4 +111,4 @@
 
     - name: 🔓 STATUS - Ready for VMs
       ansible.builtin.debug:
-        msg: "AMD Epyc is now fully prepared with ZFS NVMe storage and Bridged networking (Lesson Applied)."
+        msg: "AMD Epyc is optimized. ZFS ARC capped at 32GB and Libvirt networking ready."

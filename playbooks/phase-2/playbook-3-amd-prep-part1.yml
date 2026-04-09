@@ -1,58 +1,38 @@
 ---
-- name: Phase 2.1 - AMD Epyc Hypervisor Foundations (Non-Networking)
+- name: Phase 2.1 - AMD Epyc Sanitization & Tools
   hosts: management_plane
   become: true
-  gather_facts: true
+  gather_facts: false
 
   tasks:
-    - name: 🛑 SANITIZATION - Remove LXD/LXC
-      block:
-        - name: Gather service facts
-          ansible.builtin.service_facts:
-
-        - name: Stop and disable LXD/LXC services
-          ansible.builtin.systemd:
-            name: "{{ item }}"
-            state: stopped
-            enabled: false
-          loop: [lxd.service, lxd-agent.service, lxcfs.service]
-          when: "ansible_facts.services[item] is defined"
-          ignore_errors: true
-
-        - name: Purge LXD/LXC Artifacts
-          ansible.builtin.apt:
-            name: ["lxd", "lxd-client", "lxc", "lxcfs"]
-            state: absent
-            purge: true
-
-    - name: 📦 DEPENDENCIES - Install KVM, Libvirt & Cockpit UI
+    - name: 🧹 SANITIZE - Remove unnecessary container engines
       ansible.builtin.apt:
-        name: 
-          - qemu-kvm
-          - libvirt-daemon-system
-          - libvirt-clients
-          - bridge-utils
-          - virtinst
-          - virt-manager
-          - ovmf
-          - cockpit
-          - cockpit-machines
-          - genisoimage
-          - python3-libvirt
-          - python3-lxml
-          - python3-yaml
-          - python3-pip
+        name:
+          - docker.io
+          - containerd
+          - runc
+        state: absent
+        purge: true
+
+    - name: 🧹 CLEANUP - Remove dangling dependencies
+      ansible.builtin.apt:
+        autoremove: true
+        purge: true
+
+    - name: 🏗️ TOOLS - Install Essential Admin Tools
+      ansible.builtin.apt:
+        name:
+          - git
+          - curl
+          - htop
+          - jq
+          - unzip
+          - psmisc
+          - net-tools
+          - socat
         state: present
+        update_cache: true
 
-    - name: 👥 ACCESS - Add bishop to libvirt group
-      ansible.builtin.user:
-        name: bishop
-        groups: libvirt,kvm
-        append: true
-
-    - name: 🔓 STATUS - Success Message
+    - name: 🔓 STATUS - AMD Prep Part 1 Complete
       ansible.builtin.debug:
-        msg: 
-          - "SMS-1 is now prepared with Hypervisor tools and Cockpit."
-          - "Cockpit UI: https://192.168.199.4:9090"
-          - "Networking: Preserved from Phase 0 Standard (br0, br198)."
+        msg: "Hypervisor sanitized (Docker/Containerd removed) and admin tools installed."

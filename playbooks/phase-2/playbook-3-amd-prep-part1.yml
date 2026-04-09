@@ -33,6 +33,13 @@
         state: present
         update_cache: true
 
+    - name: 🧠 RECLAIM - Restart Cockpit to release memory
+      ansible.builtin.shell: |
+        systemctl stop cockpit.socket cockpit.service
+        killall cockpit-bridge || true
+        systemctl start cockpit.socket
+      changed_when: true
+
     - name: 🔓 STATUS - AMD Prep Part 1 Complete
       ansible.builtin.debug:
-        msg: "Hypervisor sanitized (Docker/Containerd removed) and admin tools installed."
+        msg: "Hypervisor sanitized, tools installed, and Cockpit memory reclaimed."

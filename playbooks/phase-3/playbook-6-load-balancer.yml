@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-6 - Deploy OKD Load Balancer (Persistent HAProxy)
+- name: Phase 3-6 - Deploy OKD Load Balancer (Persistent & Idempotent)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -15,16 +15,23 @@
       - { name: "okd-master-03", ip: "192.168.199.23" }
 
   tasks:
+    - name: 🔍 CHECK - See if VIP is already in Netplan
+      ansible.builtin.command: "grep -q '{{ lb_ip }}' /etc/netplan/99-homelab-standard.yaml"
+      register: vip_check
+      ignore_errors: true
+      changed_when: false
+
     - name: 🌐 NETWORK - Ensure VIP is persistent in Netplan
       ansible.builtin.replace:
         path: /etc/netplan/99-homelab-standard.yaml
         regexp: '- 192.168.199.5/24'
         replace: "- 192.168.199.5/24\n      - {{ lb_ip }}/24"
+      when: vip_check.rc != 0
       register: netplan_change
 
     - name: 🔄 NETWORK - Apply Netplan (if changed)
       ansible.builtin.shell: "netplan apply"
-      when: netplan_change.changed
+      when: netplan_change is defined and netplan_change.changed
 
     - name: 📦 INSTALL - Install HAProxy
       ansible.builtin.apt:
@@ -32,7 +39,7 @@
         state: present
         update_cache: true
 
-    - name: ⚙️ CONFIG - Generate haproxy.cfg (No-Fail Checks)
+    - name: ⚙️ CONFIG - Generate haproxy.cfg (Idempotent)
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
@@ -49,7 +56,6 @@
           backend okd-api-backend
               mode tcp
               balance roundrobin
-              # No 'check' here ensures we always attempt connection
               {% for node in nodes %}
               server {{ node.name }} {{ node.ip }}:{{ api_port }}
               {% endfor %}

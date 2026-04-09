@@ -6,17 +6,28 @@
     install_dir: "/opt/okd-cluster"
   
   tasks:
-    - name: ⏳ WAIT - Monitoring OKD Bootstrap Process (This may take 30+ minutes)
+    - name: ⏳ WAIT - Monitoring OKD Bootstrap Process
       ansible.builtin.command:
         cmd: "openshift-install wait-for bootstrap-complete --dir={{ install_dir }} --log-level=info"
       become: true
       register: bootstrap_result
-      async: 3600 # 1 hour timeout
-      poll: 30    # Check every 30 seconds
+      async: 3600
+      poll: 30
 
-    - name: 🔓 STATUS - Bootstrap Complete
-      ansible.builtin.debug:
-        msg: "Bootstrap node has finished its task. The Control Plane is now self-hosted."
+    - name: 🔄 HANDOFF - Comment out Bootstrap node in HAProxy
+      ansible.builtin.replace:
+        path: /etc/haproxy/haproxy.cfg
+        regexp: '^(\s*server okd-bootstrap 192.168.199.20.*)'
+        replace: '# \1'
+      become: true
+      register: lb_handoff
+
+    - name: 🔄 RESTART - Apply Production LB Config
+      ansible.builtin.systemd:
+        name: haproxy
+        state: restarted
+      become: true
+      when: lb_handoff.changed
 
     - name: 🗑️ CLEANUP - Destroy Bootstrap VM on SMS-1
       ansible.builtin.shell: |
@@ -42,11 +53,11 @@
     - name: 📝 CSR - Automatically approve pending CSRs
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs -r oc adm certificate approve
+        oc get csr -o name | xargs -r oc adm certificate approve
       become: true
       register: csr_approval
       until: "csr_approval is success"
-      retries: 30
+      retries: 10
       delay: 30
 
     - name: 🚀 VERIFY - Check Master Node Status
@@ -61,7 +72,4 @@
 
     - name: 🔓 STATUS - OKD Control Plane is Ready
       ansible.builtin.debug:
-        msg: |
-          OKD Masters are UP and Ready!
-          Console URL: {{ lookup('shell', 'oc get route -n openshift-console console -o jsonpath="{.spec.host}"') }}
-          Credentials: cat {{ install_dir }}/auth/kubeadmin-password
+        msg: "Handoff complete. Bootstrap node is commented out and VM deleted. Cluster is healthy."

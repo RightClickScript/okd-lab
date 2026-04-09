@@ -209,7 +209,7 @@
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
       loop:
-        - { name: "okd-bootstrap", ram: 32768, cpu: 4, disk: 100 }
+        - { name: "okd-bootstrap", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-01", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
         - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }

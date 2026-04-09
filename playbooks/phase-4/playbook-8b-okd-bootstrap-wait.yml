@@ -36,24 +36,36 @@
       delegate_to: sms-1
       become: true
 
-    - name: 🔑 CONFIG - Set up Kubeconfig for local spark
+    - name: 📁 CONFIG - Ensure .kube directory exists for Bishop
       ansible.builtin.file:
-        path: "~/.kube"
+        path: "/home/bishop/.kube"
         state: directory
+        owner: bishop
+        group: bishop
         mode: '0700'
+      become: true
 
-    - name: 📄 CONFIG - Copy Kubeconfig to User Home
+    - name: 📄 CONFIG - Copy Kubeconfig to Bishop Home
       ansible.builtin.copy:
         src: "{{ install_dir }}/auth/kubeconfig"
-        dest: "~/.kube/config"
+        dest: "/home/bishop/.kube/config"
+        owner: bishop
+        group: bishop
         mode: '0600'
         remote_src: true
+      become: true
+
+    - name: ⚙️ CONFIG - Set KUBECONFIG variable in Bishop .bashrc
+      ansible.builtin.lineinfile:
+        path: /home/bishop/.bashrc
+        line: 'export KUBECONFIG=~/.kube/config'
+        state: present
       become: true
 
     - name: 📝 CSR - Automatically approve pending CSRs
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        oc get csr -o name | xargs -r oc adm certificate approve
+        oc --insecure-skip-tls-verify get csr -o name | xargs -r oc --insecure-skip-tls-verify adm certificate approve
       become: true
       register: csr_approval
       until: "csr_approval is success"
@@ -62,9 +74,10 @@
 
     - name: 🚀 VERIFY - Check Master Node Status
       ansible.builtin.command:
-        cmd: "oc get nodes"
+        cmd: "oc --insecure-skip-tls-verify get nodes"
       environment:
         KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+      become: true
       register: node_status
       until: "node_status.stdout.count('Ready') >= 3"
       retries: 20
@@ -72,4 +85,4 @@
 
     - name: 🔓 STATUS - OKD Control Plane is Ready
       ansible.builtin.debug:
-        msg: "Handoff complete. Bootstrap node is commented out and VM deleted. Cluster is healthy."
+        msg: "Handoff complete. Bishop user is now fully configured for cluster management."

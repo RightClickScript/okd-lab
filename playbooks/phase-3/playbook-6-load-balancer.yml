@@ -15,25 +15,13 @@
       - { name: "okd-master-03", ip: "192.168.199.23" }
 
   tasks:
-    - name: 🧠 FIX - Repair any previous indentation errors in Netplan
-      ansible.builtin.replace:
-        path: /etc/netplan/99-homelab-standard.yaml
-        regexp: '^\s*- 192.168.199.60/24'
-        replace: '        - 192.168.199.60/24'
-      ignore_errors: true
-
-    - name: 🌐 NETWORK - Ensure VIP is persistent in Netplan (Correct Indentation)
-      ansible.builtin.lineinfile:
-        path: /etc/netplan/99-homelab-standard.yaml
-        insertafter: '- 192.168.199.5/24'
-        line: "        - {{ lb_ip }}/24"
-        regexp: '^\s*- {{ lb_ip }}/24'
-        state: present
-      register: netplan_change
-
-    - name: 🔄 NETWORK - Apply Netplan (if changed)
-      ansible.builtin.shell: "netplan apply"
-      when: netplan_change.changed
+    - name: 🌐 NETWORK - Hardened Netplan Update (SED Based)
+      ansible.builtin.shell: |
+        if ! grep -q "{{ lb_ip }}" /etc/netplan/99-homelab-standard.yaml; then
+          sed -i "/- 192.168.199.5\/24/a \        - {{ lb_ip }}/24" /etc/netplan/99-homelab-standard.yaml
+          netplan apply
+        fi
+      changed_when: true
 
     - name: 📦 INSTALL - Install HAProxy
       ansible.builtin.apt:

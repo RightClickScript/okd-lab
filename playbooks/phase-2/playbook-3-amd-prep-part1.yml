@@ -30,6 +30,7 @@
           - psmisc
           - net-tools
           - socat
+          - lm-sensors
         state: present
         update_cache: true
 

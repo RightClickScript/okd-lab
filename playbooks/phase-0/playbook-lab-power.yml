@@ -1,79 +1,88 @@
 ---
 - name: Lab Power Control - Global Management
-  hosts: localhost
+  hosts: all
   gather_facts: false
-
   vars:
-    # Action passed from Semaphore or CLI (shutdown/startup)
     power_action: "{{ action | default('shutdown') }}"
 
   tasks:
     # --- SHUTDOWN SEQUENCE ---
-    - name: 🌙 SHUTDOWN - Graceful Lab Power Down
-      when: power_action == "shutdown"
-      block:
-        - name: 🛠️ WORKERS - Shutting down physical NUCs
-          ansible.builtin.shell: "ssh -o StrictHostKeyChecking=no {{ item }} 'sudo shutdown -h now'"
-          loop: ["192.168.199.1", "192.168.199.2", "192.168.199.3"]
-          ignore_errors: true
-          delegate_to: lpt-1
+    - name: 🌙 SHUTDOWN - Physical Workers (NUCs)
+      ansible.builtin.command: shutdown -h now
+      async: 1
+      poll: 0
+      become: true
+      when: 
+        - power_action == "shutdown"
+        - inventory_hostname in groups['compute_plane']
+      ignore_errors: true
 
-        - name: 🛠️ GUESTS - Shutting down all VMs on SMS-1
-          ansible.builtin.shell: "virsh shutdown {{ item }}"
-          loop: ["okd-master-01", "okd-master-02", "okd-master-03", "identity-01", "morpheus-01"]
-          delegate_to: sms-1
-          become: true
-          ignore_errors: true
+    - name: 🌙 SHUTDOWN - Hypervisor Guests on SMS-1
+      ansible.builtin.shell: "virsh shutdown {{ item }}"
+      loop: ["okd-master-01", "okd-master-02", "okd-master-03", "identity-01", "morpheus-01"]
+      become: true
+      when: 
+        - power_action == "shutdown"
+        - inventory_hostname == "sms-1"
+      ignore_errors: true
 
-        - name: ⏳ WAIT - Giving VMs 60 seconds to stop
-          ansible.builtin.pause:
-            seconds: 60
+    - name: ⏳ WAIT - Giving VMs time to stop
+      ansible.builtin.pause:
+        seconds: 60
+      when: 
+        - power_action == "shutdown"
+        - inventory_hostname == "sms-1"
 
-        - name: 🛠️ HYPERVISOR - Shutting down physical SMS-1
-          ansible.builtin.shell: "sudo shutdown -h now"
-          delegate_to: sms-1
-          ignore_errors: true
-
-        - name: 🔓 STATUS - Shutdown complete
-          ansible.builtin.debug:
-            msg: "Lab is dark. NUCs, VMs, and SMS-1 are powered down. lpt-1 remains active."
+    - name: 🌙 SHUTDOWN - Hypervisor Host (SMS-1)
+      ansible.builtin.command: shutdown -h now
+      async: 1
+      poll: 0
+      become: true
+      when: 
+        - power_action == "shutdown"
+        - inventory_hostname == "sms-1"
+      ignore_errors: true
 
     # --- STARTUP SEQUENCE ---
-    - name: ☀️ STARTUP - Graceful Lab Wake-Up
-      when: power_action == "startup"
-      block:
-        - name: 🛠️ HYPERVISOR - Waking up physical SMS-1 (Wake-on-LAN)
-          community.general.wakeonlan:
-            mac: "5e:dc:07:8f:3e:01"
-            broadcast: 192.168.199.255
-          delegate_to: lpt-1
+    - name: ☀️ STARTUP - Hypervisor Host (Wake-on-LAN)
+      community.general.wakeonlan:
+        mac: "5e:dc:07:8f:3e:01"
+        broadcast: 192.168.199.255
+      when: 
+        - power_action == "startup"
+        - inventory_hostname == "lpt-1"
 
-        - name: ⏳ WAIT - Giving SMS-1 time to boot (3 minutes)
-          ansible.builtin.pause:
-            minutes: 3
+    - name: ⏳ WAIT - Giving SMS-1 time to boot (3 minutes)
+      ansible.builtin.pause:
+        minutes: 3
+      when: 
+        - power_action == "startup"
+        - inventory_hostname == "lpt-1"
 
-        - name: 🛠️ IDENTITY - Starting Windows DC (DNS First)
-          ansible.builtin.shell: "virsh start identity-01"
-          delegate_to: sms-1
-          become: true
+    - name: ☀️ STARTUP - Hypervisor Guests (Identity first)
+      ansible.builtin.shell: "virsh start identity-01"
+      become: true
+      when: 
+        - power_action == "startup"
+        - inventory_hostname == "sms-1"
 
-        - name: ⏳ WAIT - Giving DNS 60 seconds to stabilize
-          ansible.builtin.pause:
-            seconds: 60
+    - name: ☀️ STARTUP - Hypervisor Guests (Masters)
+      ansible.builtin.shell: "virsh start {{ item }}"
+      loop: ["okd-master-01", "okd-master-02", "okd-master-03", "morpheus-01"]
+      become: true
+      when: 
+        - power_action == "startup"
+        - inventory_hostname == "sms-1"
 
-        - name: 🛠️ MASTERS - Starting OKD Control Plane
-          ansible.builtin.shell: "virsh start {{ item }}"
-          loop: ["okd-master-01", "okd-master-02", "okd-master-03", "morpheus-01"]
-          delegate_to: sms-1
-          become: true
+    - name: ☀️ STARTUP - Physical Workers (Wake-on-LAN)
+      community.general.wakeonlan:
+        mac: "{{ hostvars[item]['mac'] }}"
+        broadcast: 192.168.199.255
+      loop: ["nuc-1", "nuc-2", "nuc-3"]
+      when: 
+        - power_action == "startup"
+        - inventory_hostname == "lpt-1"
 
-        - name: 🛠️ WORKERS - Waking up physical NUCs (Wake-on-LAN)
-          community.general.wakeonlan:
-            mac: "{{ hostvars[item]['mac'] }}"
-            broadcast: 192.168.199.255
-          loop: ["nuc-1", "nuc-2", "nuc-3"]
-          delegate_to: lpt-1
-
-        - name: 🔓 STATUS - Startup complete
-          ansible.builtin.debug:
-            msg: "Lab is waking up. SMS-1 is up, VMs are starting, and NUCs have been signaled."
+    - name: 🔓 STATUS - Power Control Task Finished
+      ansible.builtin.debug:
+        msg: "Power action '{{ power_action }}' has been applied to the lab."

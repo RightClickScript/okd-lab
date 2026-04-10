@@ -11,6 +11,8 @@
     semaphore_url: "http://192.168.199.50"
 
     templates:
+      - { name: "Phase 0: Lab Control (Shutdown)", playbook: "playbooks/phase-0/playbook-lab-power.yml", vars: { action: "shutdown" } }
+      - { name: "Phase 0: Lab Control (Startup)", playbook: "playbooks/phase-0/playbook-lab-power.yml", vars: { action: "startup" } }
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
       - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
       - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }
@@ -148,12 +150,14 @@
           environment_id: "{{ f_env_id | int }}"
           ssh_key_id: "{{ f_ssh_id | int }}"
           playbook: "{{ item.playbook }}"
+          extra_vars: "{{ item.vars | default({}) | to_json }}"
           app: "ansible"
           arguments: "[\"-vv\"]"
           allow_override_args_in_task: true
         headers: { Cookie: "{{ login_response.cookies_string }}", Host: "semaphore.homelab.local" }
         status_code: [201]
       loop: "{{ templates }}"
+      ignore_errors: true
 
     - name: 🎉 FINISH - Success Message
       ansible.builtin.debug:

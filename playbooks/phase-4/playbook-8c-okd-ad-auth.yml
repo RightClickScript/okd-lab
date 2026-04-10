@@ -1,0 +1,57 @@
+---
+- name: Phase 4.3 - OKD Active Directory Integration
+  hosts: local_spark
+  become: true
+  gather_facts: false
+
+  vars:
+    dc_ip: "192.168.199.10"
+    domain: "homelab.local"
+    # The DN path for your users (Standard AD structure)
+    bind_dn: "CN=Administrator,CN=Users,DC=homelab,DC=local"
+    bind_password: "Admin@12345"
+    user_search_base: "CN=Users,DC=homelab,DC=local"
+
+  tasks:
+    - name: 🔐 SECRET - Create LDAP Bind Password Secret
+      ansible.builtin.shell: |
+        oc create secret generic ldap-secret --from-literal=bindPassword={{ bind_password }} -n openshift-config --kubeconfig=/home/bishop/.kube/config --dry-run=client -o yaml | oc apply -f - --kubeconfig=/home/bishop/.kube/config
+      changed_when: true
+
+    - name: ⚙️ CONFIG - Apply LDAP Identity Provider
+      ansible.builtin.shell: |
+        cat <<EOF | oc apply -f - --kubeconfig=/home/bishop/.kube/config
+        apiVersion: config.openshift.io/v1
+        kind: OAuth
+        metadata:
+          name: cluster
+        spec:
+          identityProviders:
+          - name: Homelab-AD
+            mappingMethod: claim
+            type: LDAP
+            ldap:
+              attributes:
+                id: ["dn"]
+                email: ["mail"]
+                name: ["cn"]
+                preferredUsername: ["sAMAccountName"]
+              bindDN: "{{ bind_dn }}"
+              bindPassword:
+                name: ldap-secret
+              ca:
+                name: "" 
+              insecure: true
+              url: "ldap://{{ dc_ip }}:389/{{ user_search_base }}?sAMAccountName"
+        EOF
+      changed_when: true
+
+    - name: 👑 RBAC - Grant Cluster Admin to AD Admin
+      ansible.builtin.shell: |
+        oc adm policy add-cluster-role-to-user cluster-admin bishop --kubeconfig=/home/bishop/.kube/config
+      ignore_errors: true
+      changed_when: true
+
+    - name: 🔓 STATUS - AD Integration Applied
+      ansible.builtin.debug:
+        msg: "LDAP Integration applied. You can now log in to the Web Console using your AD credentials."

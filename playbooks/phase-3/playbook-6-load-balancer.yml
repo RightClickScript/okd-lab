@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-6 - Deploy OKD Load Balancer (Persistent & Idempotent)
+- name: Phase 3-6 - Deploy OKD Load Balancer (Full Stack & Persistent)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -8,6 +8,8 @@
     lb_ip: "192.168.199.60"
     api_port: 6443
     mcs_port: 22623
+    http_port: 80
+    https_port: 443
     nodes:
       - { name: "okd-bootstrap", ip: "192.168.199.20" }
       - { name: "okd-master-01", ip: "192.168.199.21" }
@@ -29,7 +31,7 @@
         state: present
         update_cache: true
 
-    - name: ⚙️ CONFIG - Generate haproxy.cfg (Idempotent)
+    - name: ⚙️ CONFIG - Generate haproxy.cfg (Full Stack)
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
@@ -47,7 +49,7 @@
               mode tcp
               balance roundrobin
               {% for node in nodes %}
-              server {{ node.name }} {{ node.ip }}:{{ api_port }}
+              server {{ node.name }} {{ node.ip }}:{{ api_port }} check
               {% endfor %}
 
           #---------------------------------------------------------------------
@@ -63,7 +65,39 @@
               mode tcp
               balance roundrobin
               {% for node in nodes %}
-              server {{ node.name }} {{ node.ip }}:{{ mcs_port }}
+              server {{ node.name }} {{ node.ip }}:{{ mcs_port }} check
+              {% endfor %}
+
+          #---------------------------------------------------------------------
+          # OKD HTTP Ingress (80)
+          #---------------------------------------------------------------------
+          frontend okd-http
+              bind {{ lb_ip }}:{{ http_port }}
+              mode tcp
+              option tcplog
+              default_backend okd-http-backend
+
+          backend okd-http-backend
+              mode tcp
+              balance roundrobin
+              {% for node in nodes if node.name != 'okd-bootstrap' %}
+              server {{ node.name }} {{ node.ip }}:{{ http_port }} check
+              {% endfor %}
+
+          #---------------------------------------------------------------------
+          # OKD HTTPS Ingress (443)
+          #---------------------------------------------------------------------
+          frontend okd-https
+              bind {{ lb_ip }}:{{ https_port }}
+              mode tcp
+              option tcplog
+              default_backend okd-https-backend
+
+          backend okd-https-backend
+              mode tcp
+              balance roundrobin
+              {% for node in nodes if node.name != 'okd-bootstrap' %}
+              server {{ node.name }} {{ node.ip }}:{{ https_port }} check
               {% endfor %}
 
     - name: 🔄 RESTART - Apply HAProxy Configuration
@@ -74,4 +108,4 @@
 
     - name: 🔓 STATUS - Load Balancer is Live
       ansible.builtin.debug:
-        msg: "OKD Load Balancer is persistent and live on {{ lb_ip }}."
+        msg: "Full Stack OKD Load Balancer is persistent and live on {{ lb_ip }}."

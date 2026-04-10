@@ -6,21 +6,28 @@
 
   vars:
     dc_ip: "192.168.199.10"
+    lb_ip: "192.168.199.60"
     domain: "homelab.local"
-    # The DN path for your users (Standard AD structure)
     bind_dn: "CN=Administrator,CN=Users,DC=homelab,DC=local"
     bind_password: "Admin@12345"
     user_search_base: "CN=Users,DC=homelab,DC=local"
+    kubeconfig: "/home/bishop/.kube/config"
 
   tasks:
+    - name: 🌐 DNS - Force API Resolution to Load Balancer
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ lb_ip }} api.okd.homelab.local api-int.okd.homelab.local"
+        state: present
+
     - name: 🔐 SECRET - Create LDAP Bind Password Secret
       ansible.builtin.shell: |
-        oc create secret generic ldap-secret --from-literal=bindPassword={{ bind_password }} -n openshift-config --kubeconfig=/home/bishop/.kube/config --dry-run=client -o yaml | oc apply -f - --kubeconfig=/home/bishop/.kube/config
+        oc create secret generic ldap-secret --from-literal=bindPassword={{ bind_password }} -n openshift-config --kubeconfig={{ kubeconfig }} --dry-run=client -o yaml | oc --insecure-skip-tls-verify apply -f - --kubeconfig={{ kubeconfig }}
       changed_when: true
 
     - name: ⚙️ CONFIG - Apply LDAP Identity Provider
       ansible.builtin.shell: |
-        cat <<EOF | oc apply -f - --kubeconfig=/home/bishop/.kube/config
+        cat <<EOF | oc --insecure-skip-tls-verify apply -f - --kubeconfig={{ kubeconfig }}
         apiVersion: config.openshift.io/v1
         kind: OAuth
         metadata:
@@ -48,10 +55,10 @@
 
     - name: 👑 RBAC - Grant Cluster Admin to AD Admin
       ansible.builtin.shell: |
-        oc adm policy add-cluster-role-to-user cluster-admin bishop --kubeconfig=/home/bishop/.kube/config
+        oc --insecure-skip-tls-verify adm policy add-cluster-role-to-user cluster-admin bishop --kubeconfig={{ kubeconfig }}
       ignore_errors: true
       changed_when: true
 
     - name: 🔓 STATUS - AD Integration Applied
       ansible.builtin.debug:
-        msg: "LDAP Integration applied. You can now log in to the Web Console using your AD credentials."
+        msg: "LDAP Integration applied. Semaphore forced to use .60 for API."

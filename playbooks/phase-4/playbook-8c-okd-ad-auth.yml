@@ -55,7 +55,7 @@
 
     - name: 👑 RBAC - Grant Cluster Admin to AD Admin
       ansible.builtin.shell: |
-        oc --insecure-skip-tls-verify adm policy add-cluster-role-to-user cluster-admin bishop --kubeconfig={{ kubeconfig }}
+        oc --insecure-skip-tls-verify adm policy add-cluster-role-to-user cluster-admin okd_admin --kubeconfig={{ kubeconfig }}
       ignore_errors: true
       changed_when: true
 

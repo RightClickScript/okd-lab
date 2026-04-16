@@ -12,7 +12,7 @@ all:
       mgmt_gateway: "192.168.199.254"
       primary_dns: "192.168.199.10" # Promoted from UniFi to Windows DC
       secondary_dns: "192.168.1.1"
-      okd_lb_ip: "192.168.199.60"   # Dedicated VIP for OKD API
+      okd_lb_ip: "192.168.199.60" # Dedicated VIP for OKD API
       vlan198_id: 198
       search_domains: ["homelab.local"]
 
@@ -101,28 +101,28 @@ all:
       ansible_host: 192.168.199.4
       os_disk: "/dev/sda"
       data_disk: "/dev/nvme0n1"
-      mac: "5e:dc:07:8f:3e:01"
+      mac: "fe:f9:33:35:d7:e8"
       physical_iface: eno1
       type: "sms"
     nuc-1:
       ansible_host: 192.168.199.1
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
-      mac: "22:27:c6:e0:ab:1a"
+      mac: "1c:69:7a:65:a7:19"
       physical_iface: eno1
       type: "nuc"
     nuc-2:
       ansible_host: 192.168.199.2
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
-      mac: "02:0f:a8:43:7f:47"
+      mac: "1c:69:7a:65:a7:72"
       physical_iface: eno1
       type: "nuc"
     nuc-3:
       ansible_host: 192.168.199.3
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
-      mac: "9e:cb:b7:23:f4:38"
+      mac: "1c:69:7a:65:a7:82"
       physical_iface: eno1
       type: "nuc"
     identity-01:

@@ -1,91 +1,46 @@
 ---
-- name: Lab Power Control - Global Management (Decisive)
-  hosts: all
+- name: Phase 0.4 - Lab Power Control (Shutdown)
+  hosts: physical
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 🛑 SHUTDOWN - Power off NUCs and SMS-1
+      community.general.shutdown:
+      when: type in ['nuc', 'sms']
+      tags: [power_off, never]
+
+- name: Phase 0.4 - Lab Power Control (Power On)
+  hosts: local_spark
   gather_facts: false
   vars:
-    power_action: "{{ action | default('shutdown') }}"
-
+    # Query only hosts in the physical group that have a MAC defined
+    power_on_targets: "{{ groups['physical'] }}"
+  
   tasks:
-    # --- SHUTDOWN SEQUENCE ---
-    - name: 🌙 SHUTDOWN - Physical Workers (NUCs)
-      ansible.builtin.shell: "nohup bash -c 'sleep 2; shutdown -h now' &"
-      become: true
+    - name: ⚡ WAKE - Send WoL to SMS-1 first
+      ansible.builtin.command: "wakeonlan {{ hostvars[item].mac }}"
+      loop: "{{ power_on_targets }}"
       when: 
-        - power_action == "shutdown"
-        - inventory_hostname in groups['compute_plane']
-      ignore_errors: true
+        - hostvars[item].type == 'sms'
+        - hostvars[item].mac is defined
+      tags: [power_on, never]
 
-    - name: 🌙 SHUTDOWN - OKD Masters (Hard Power Off)
-      ansible.builtin.shell: "virsh destroy {{ item }}"
-      loop: ["okd-master-01", "okd-master-02", "okd-master-03"]
-      become: true
-      when: 
-        - power_action == "shutdown"
-        - inventory_hostname == "sms-1"
-      ignore_errors: true
-
-    - name: 🌙 SHUTDOWN - Identity & Morpheus (Graceful then Hard)
-      ansible.builtin.shell: "virsh shutdown {{ item }} && sleep 10 && virsh destroy {{ item }}"
-      loop: ["identity-01", "morpheus-01"]
-      become: true
-      when: 
-        - power_action == "shutdown"
-        - inventory_hostname == "sms-1"
-      ignore_errors: true
-
-    - name: ⏳ WAIT - Giving SMS-1 a moment to breathe
+    - name: ⏳ WAIT - Allow SMS-1 to initialize (2 mins)
       ansible.builtin.pause:
-        seconds: 10
-      when: 
-        - power_action == "shutdown"
-        - inventory_hostname == "sms-1"
+        seconds: 120
+      tags: [power_on, never]
 
-    - name: 🌙 SHUTDOWN - Hypervisor Host (SMS-1)
-      ansible.builtin.shell: "nohup bash -c 'sleep 5; shutdown -h now' &"
-      become: true
+    - name: ⚡ WAKE - Send WoL to NUC cluster
+      ansible.builtin.command: "wakeonlan {{ hostvars[item].mac }}"
+      loop: "{{ power_on_targets }}"
+      loop_control:
+        pause: 10 # Short pause between NUC packets
       when: 
-        - power_action == "shutdown"
-        - inventory_hostname == "sms-1"
-      ignore_errors: true
+        - hostvars[item].type == 'nuc'
+        - hostvars[item].mac is defined
+      tags: [power_on, never]
 
-    # --- STARTUP SEQUENCE ---
-    - name: ☀️ STARTUP - Hypervisor Host (Wake-on-LAN)
-      community.general.wakeonlan:
-        mac: "5e:dc:07:8f:3e:01"
-        broadcast: 192.168.199.255
-      when: 
-        - power_action == "startup"
-        - inventory_hostname == "lpt-1"
-
-    - name: ⏳ WAIT - Giving SMS-1 time to boot (3 minutes)
-      ansible.builtin.pause:
-        minutes: 3
-      when: 
-        - power_action == "startup"
-        - inventory_hostname == "lpt-1"
-
-    - name: ☀️ STARTUP - Hypervisor Guests (Identity first)
-      ansible.builtin.shell: "virsh start identity-01"
-      become: true
-      when: 
-        - power_action == "startup"
-        - inventory_hostname == "sms-1"
-      ignore_errors: true
-
-    - name: ☀️ STARTUP - Hypervisor Guests (Masters & Morpheus)
-      ansible.builtin.shell: "virsh start {{ item }}"
-      loop: ["okd-master-01", "okd-master-02", "okd-master-03", "morpheus-01"]
-      become: true
-      when: 
-        - power_action == "startup"
-        - inventory_hostname == "sms-1"
-      ignore_errors: true
-
-    - name: ☀️ STARTUP - Physical Workers (Wake-on-LAN)
-      community.general.wakeonlan:
-        mac: "{{ hostvars[item]['mac'] }}"
-        broadcast: 192.168.199.255
-      loop: ["nuc-1", "nuc-2", "nuc-3"]
-      when: 
-        - power_action == "startup"
-        - inventory_hostname == "lpt-1"
+    - name: 🔓 STATUS - Power signals sent
+      ansible.builtin.debug:
+        msg: "Wake-on-LAN packets dispatched from lpt-1 to SMS-1 and NUCs."
+      tags: [power_on, never]

@@ -11,8 +11,8 @@
     semaphore_url: "http://192.168.199.50"
 
     templates:
-      - { name: "Phase 0: Lab Control (Shutdown)", playbook: "playbooks/phase-0/playbook-lab-power.yml", vars: { action: "shutdown" } }
-      - { name: "Phase 0: Lab Control (Startup)", playbook: "playbooks/phase-0/playbook-lab-power.yml", vars: { action: "startup" } }
+      - { name: "Phase 0: Lab Control (Shutdown)", playbook: "playbooks/phase-0/playbook-lab-power.yml", arguments: "--tags power_off" }
+      - { name: "Phase 0: Lab Control (Startup)", playbook: "playbooks/phase-0/playbook-lab-power.yml", arguments: "--tags power_on" }
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
       - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
       - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }

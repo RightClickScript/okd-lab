@@ -103,24 +103,28 @@ all:
       data_disk: "/dev/nvme0n1"
       mac: "5e:dc:07:8f:3e:01"
       physical_iface: eno1
+      type: "sms"
     nuc-1:
       ansible_host: 192.168.199.1
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
       mac: "22:27:c6:e0:ab:1a"
       physical_iface: eno1
+      type: "nuc"
     nuc-2:
       ansible_host: 192.168.199.2
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
       mac: "02:0f:a8:43:7f:47"
       physical_iface: eno1
+      type: "nuc"
     nuc-3:
       ansible_host: 192.168.199.3
       os_disk: "/dev/nvme0n1"
       data_disk: "/dev/sda"
       mac: "9e:cb:b7:23:f4:38"
       physical_iface: eno1
+      type: "nuc"
     identity-01:
       ansible_host: 192.168.199.10
     morpheus-01:
@@ -129,6 +133,10 @@ all:
     local_spark:
       hosts:
         lpt-1:
+    physical:
+      children:
+        management_plane:
+        compute_plane:
     management_plane:
       hosts:
         sms-1:

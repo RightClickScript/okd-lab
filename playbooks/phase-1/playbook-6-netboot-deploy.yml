@@ -35,14 +35,14 @@
           - "{{ assets_dir }}:/assets"
         state: started
 
-    - name: 🛠️ CONFIG - Download Standalone iPXE Binaries
+    - name: 🛠️ CONFIG - Download Standard iPXE Binaries
       ansible.builtin.get_url:
         url: "https://boot.netboot.xyz/ipxe/{{ item.src }}"
         dest: "{{ config_dir }}/{{ item.dest }}"
         mode: '0644'
         force: true
       loop:
-        - { src: "netboot.xyz-metal.efi", dest: "netboot.xyz.efi" }
+        - { src: "netboot.xyz.efi", dest: "netboot.xyz.efi" }
         - { src: "netboot.xyz.kpxe", dest: "netboot.xyz.kpxe" }
 
     - name: 🛠️ CONFIG - Enable DHCP Auto-Selection

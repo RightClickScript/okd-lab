@@ -16,9 +16,7 @@
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
       - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
       - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }
-      - { name: "Phase 2: SMS-1 Prep (Part 1 - Tools)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part1.yml" }
-      - { name: "Phase 2: SMS-1 Prep (Part 2 - KVM & ZFS)", playbook: "playbooks/phase-2/playbook-3-amd-prep-part2.yml" }
-      - { name: "Phase 2: NUC Prep (Ignition Generator)", playbook: "playbooks/phase-2/playbook-4-nuc-prep.yml" }
+      - { name: "Phase 2: Standardize Hypervisors (SMS & NUCs)", playbook: "playbooks/phase-2/playbook-3-hypervisor-standard.yml" }
       - { name: "Phase 3: Identity (Deploy Windows VM)", playbook: "playbooks/phase-3/playbook-5-identity.yml" }
       - { name: "Phase 3: Identity (Configure AD Domain)", playbook: "playbooks/phase-3/playbook-5b-ad-config.yml" }
       - { name: "Phase 3: Identity (Fix DNS & OKD Records)", playbook: "playbooks/phase-3/playbook-5c-dns-fix.yml" }

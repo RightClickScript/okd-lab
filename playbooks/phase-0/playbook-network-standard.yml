@@ -1,6 +1,6 @@
 ---
 - name: 🌐 Phase 0.3 - Standardize Lab Networking (Bridges & VLANs)
-  hosts: lpt-1, sms-1
+  hosts: lpt-1, sms-1, compute_plane
   become: true
   tasks:
     - name: 📁 BACKUP - Preserve Existing Netplan

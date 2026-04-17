@@ -1,0 +1,107 @@
+---
+- name: Phase 2.1 - Unified Hypervisor Standardization (SMS-1 & NUCs)
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+
+  vars:
+    # 8GB in bytes (8 * 1024 * 1024 * 1024)
+    zfs_arc_max_bytes: 8589934592
+    storage_pool_path: "/mnt/data/vms"
+    storage_pool_name: "datapool"
+
+  tasks:
+    - name: 🧹 SANITIZE - Remove unnecessary container engines
+      ansible.builtin.apt:
+        name: [docker.io, containerd, runc]
+        state: absent
+        purge: true
+
+    - name: 🏗️ TOOLS - Install Essential Stack
+      ansible.builtin.apt:
+        name:
+          - git
+          - curl
+          - htop
+          - jq
+          - unzip
+          - psmisc
+          - net-tools
+          - socat
+          - genisoimage
+          - python3-passlib
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
+          - bridge-utils
+          - virtinst
+          - virt-manager
+          - ovmf
+          - cockpit
+          - cockpit-machines
+          - zfsutils-linux
+        state: present
+        update_cache: true
+
+    - name: 👥 ACCESS - Add bishop to libvirt group
+      ansible.builtin.user:
+        name: bishop
+        groups: libvirt,kvm
+        append: true
+
+    - name: 🧠 TUNING - Cap ZFS ARC to 8GB
+      block:
+        - name: Write ZFS module configuration
+          ansible.builtin.copy:
+            dest: /etc/modprobe.d/zfs.conf
+            content: "options zfs zfs_arc_max={{ zfs_arc_max_bytes }}\n"
+            mode: '0644'
+
+        - name: Apply ZFS ARC limit live
+          ansible.builtin.shell: "echo {{ zfs_arc_max_bytes }} > /sys/module/zfs/parameters/zfs_arc_max"
+          changed_when: true
+      ignore_errors: true # In case ZFS module isn't loaded yet
+
+    - name: 🧠 RECLAIM - Restart Cockpit to release memory
+      ansible.builtin.shell: |
+        systemctl stop cockpit.socket cockpit.service
+        killall cockpit-bridge || true
+        systemctl start cockpit.socket
+      changed_when: true
+
+    - name: 📁 STORAGE - Initialize ZFS Datapool (Optional per host)
+      block:
+        - name: Check if ZFS pool exists
+          ansible.builtin.shell: "zpool list {{ storage_pool_name }}"
+          register: zpool_check
+          ignore_errors: true
+          changed_when: false
+
+        - name: Create VM Storage Dataset
+          community.general.zfs:
+            name: "{{ storage_pool_name }}/vms"
+            state: present
+            extra_zfs_properties:
+              mountpoint: "{{ storage_pool_path }}"
+          when: zpool_check.rc == 0
+
+    - name: 🌐 NETWORKING - Link Libvirt to br0 Bridge
+      ansible.builtin.shell: |
+        virsh net-destroy br0 || true
+        virsh net-undefine br0 || true
+        virsh net-define /dev/stdin <<EOF
+        <network>
+          <name>br0</name>
+          <forward mode='bridge'/>
+          <bridge name='br0'/>
+        </network>
+        EOF
+        virsh net-start br0
+        virsh net-autostart br0
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: 🔓 STATUS - Hypervisor Optimization Complete
+      ansible.builtin.debug:
+        msg: "Host {{ inventory_hostname }} is now a standardized, optimized hypervisor with 8GB ZFS cap."

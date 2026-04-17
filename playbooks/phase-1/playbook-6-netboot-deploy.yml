@@ -46,9 +46,12 @@
     - name: 🛠️ CONFIG - Download Standalone iPXE (Bypass DHCP Loops)
       ansible.builtin.get_url:
         url: "https://boot.netboot.xyz/ipxe/netboot.xyz-metal.efi"
-        dest: "{{ config_dir }}/menus/netboot.xyz.efi"
+        dest: "{{ item }}"
         mode: '0644'
         force: true
+      loop:
+        - "{{ config_dir }}/menus/netboot.xyz.efi"
+        - "{{ config_dir }}/netboot.xyz.efi" # Root copy
 
     - name: 🔓 STATUS - Netboot is Live
       ansible.builtin.debug:

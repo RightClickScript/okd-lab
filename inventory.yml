@@ -12,6 +12,7 @@ all:
       primary_dns: "192.168.199.10"
       secondary_dns: "192.168.1.1"
       okd_lb_ip: "192.168.199.60"
+      netboot_ip: "192.168.199.70"
       vlan198_id: 198
       search_domains: ["homelab.local"]
 

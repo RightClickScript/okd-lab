@@ -16,6 +16,7 @@
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
       - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
       - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }
+      - { name: "Factory: Deploy Netboot (PXE Server)", playbook: "playbooks/phase-1/playbook-6-netboot-deploy.yml" }
       - { name: "Phase 2: Standardize Hypervisors (SMS & NUCs)", playbook: "playbooks/phase-2/playbook-3-hypervisor-standard.yml" }
       - { name: "Phase 3: Identity (Deploy Windows VM)", playbook: "playbooks/phase-3/playbook-5-identity.yml" }
       - { name: "Phase 3: Identity (Configure AD Domain)", playbook: "playbooks/phase-3/playbook-5b-ad-config.yml" }

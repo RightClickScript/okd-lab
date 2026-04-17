@@ -1,0 +1,56 @@
+---
+- name: Phase 1.5 - Deploy Netboot.xyz (PXE Factory)
+  hosts: local_spark
+  become: true
+  gather_facts: false
+
+  vars:
+    pxe_ip: "{{ network.netboot_ip }}"
+    ui_port: 30010
+    config_dir: "/mnt/data/netboot/config"
+    assets_dir: "/mnt/data/netboot/assets"
+
+  tasks:
+    - name: 🌐 NETWORK - Add VIP to Bridge Interface
+      ansible.builtin.shell: |
+        if ! ip addr show br0 | grep -q "{{ pxe_ip }}"; then
+          ip addr add {{ pxe_ip }}/24 dev br0
+        fi
+      changed_when: false
+
+    - name: 📁 PREP - Create Data Directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ config_dir }}"
+        - "{{ assets_dir }}"
+
+    - name: 🚀 DOCKER - Launch Netboot.xyz Container
+      community.docker.docker_container:
+        name: netbootxyz
+        image: ghcr.io/netbootxyz/netbootxyz:latest
+        restart_policy: always
+        # We bind specifically to the VIP for PXE services to avoid conflicts
+        ports:
+          - "{{ pxe_ip }}:69:69/udp"   # TFTP
+          - "{{ pxe_ip }}:80:80/tcp"   # HTTP Assets
+          - "0.0.0.0:{{ ui_port }}:3000/tcp" # Web UI (Global access)
+        volumes:
+          - "{{ config_dir }}:/config"
+          - "{{ assets_dir }}:/assets"
+        env:
+          MENU_VERSION: "latest"
+        state: started
+
+    - name: 🔓 STATUS - Netboot is Live
+      ansible.builtin.debug:
+        msg: |
+          Netboot.xyz is now active!
+          Web UI: http://192.168.199.5:{{ ui_port }}
+          TFTP Server: {{ pxe_ip }}
+          
+          NEXT STEPS (UniFi Controller):
+          1. Set DHCP Option 66 to: {{ pxe_ip }}
+          2. Set DHCP Option 67 to: netboot.xyz.efi (for UEFI) or netboot.xyz.kpxe (for Legacy)

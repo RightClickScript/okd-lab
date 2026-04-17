@@ -1,17 +1,24 @@
 ---
-- name: Phase 1.5 - Deploy Netboot.xyz (Host Network Mode)
+- name: Phase 1.5 - Deploy Netboot.xyz (Bridge Mode - Non-Conflicting)
   hosts: local_spark
   become: true
   gather_facts: false
 
   vars:
-    pxe_ip: "192.168.199.5"
+    # Use the Netboot VIP for dedicated PXE traffic
+    pxe_ip: "192.168.199.70"
     ui_port: 30010
-    http_port: 8081
     config_dir: "/mnt/data/netboot/config"
     assets_dir: "/mnt/data/netboot/assets"
 
   tasks:
+    - name: 🌐 NETWORK - Ensure VIP is active
+      ansible.builtin.shell: |
+        if ! ip addr show br0 | grep -q "{{ pxe_ip }}"; then
+          ip addr add {{ pxe_ip }}/24 dev br0
+        fi
+      changed_when: false
+
     - name: 📁 PREP - Create Data Directories
       ansible.builtin.file:
         path: "{{ item }}"
@@ -21,18 +28,22 @@
         - "{{ config_dir }}"
         - "{{ assets_dir }}"
 
-    - name: 🚀 DOCKER - Launch Netboot.xyz (Host Mode)
+    - name: 🚀 DOCKER - Launch Netboot.xyz (Bridge Mode)
       community.docker.docker_container:
         name: netbootxyz
         image: ghcr.io/netbootxyz/netbootxyz:latest
         restart_policy: always
-        network_mode: host
-        env:
-          PORT: "{{ ui_port | string }}"
-          NGINX_PORT: "{{ http_port | string }}"
+        # Back to Bridge mode to avoid the Nginx Host conflict
+        ports:
+          - "{{ pxe_ip }}:69:69/udp"   # TFTP on the VIP
+          - "{{ pxe_ip }}:80:80/tcp"   # HTTP Assets on the VIP
+          - "0.0.0.0:{{ ui_port }}:3000/tcp" # Web UI on all IPs
         volumes:
           - "{{ config_dir }}:/config"
           - "{{ assets_dir }}:/assets"
+        env:
+          # Tell the internal app which IP to use for its menus
+          NETBOOTXYZ_SERVER_ADDR: "{{ pxe_ip }}"
         state: started
 
     - name: 🛠️ CONFIG - Download Standard iPXE Binaries
@@ -45,17 +56,18 @@
         - { src: "netboot.xyz.efi", dest: "netboot.xyz.efi" }
         - { src: "netboot.xyz.kpxe", dest: "netboot.xyz.kpxe" }
 
-    - name: 🛠️ CONFIG - Enable DHCP Auto-Selection
+    - name: 🛠️ CONFIG - Force DHCP Auto-Selection
       ansible.builtin.replace:
         path: "{{ config_dir }}/menus/boot.cfg"
         regexp: 'set dhcp_retry 0'
         replace: 'set dhcp_retry 1'
-      ignore_errors: true # In case the file hasn't been created by the container yet
+      ignore_errors: true
 
     - name: 🔓 STATUS - Netboot is Live
       ansible.builtin.debug:
         msg: |
-          Netboot.xyz is now active in HOST MODE!
+          Netboot.xyz is now active on {{ pxe_ip }}!
           
-          RECOMMENDED ACTION:
-          If UEFI (.efi) continues to freeze, change UniFi Option 67 to: /netboot.xyz.kpxe
+          UNIFI SETTINGS (CRITICAL):
+          1. Set DHCP Option 66 to: {{ pxe_ip }}
+          2. Set DHCP Option 67 to: /netboot.xyz.efi

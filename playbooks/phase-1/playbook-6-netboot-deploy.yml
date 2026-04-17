@@ -30,8 +30,8 @@
         network_mode: host
         # In Host Mode, we use environment variables to change ports
         env:
-          PORT: "{{ ui_port }}"
-          NGINX_PORT: "{{ http_port }}"
+          PORT: "{{ ui_port | string }}"
+          NGINX_PORT: "{{ http_port | string }}"
         volumes:
           - "{{ config_dir }}:/config"
           - "{{ assets_dir }}:/assets"

@@ -1,0 +1,47 @@
+---
+- name: Phase 2.1 - NUC Hypervisor Prep (KVM & Tools)
+  hosts: compute_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: 🏗️ HYPERVISOR - Install KVM & Libvirt
+      ansible.builtin.apt:
+        name: 
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
+          - bridge-utils
+          - virtinst
+          - virt-manager
+          - cockpit
+          - cockpit-machines
+        state: present
+        update_cache: true
+
+    - name: 👥 ACCESS - Add bishop to libvirt group
+      ansible.builtin.user:
+        name: bishop
+        groups: libvirt,kvm
+        append: true
+
+    - name: 🌐 NETWORKING - Link Libvirt to br0 Bridge
+      ansible.builtin.shell: |
+        virsh net-destroy br0 || true
+        virsh net-undefine br0 || true
+        virsh net-define /dev/stdin <<EOF
+        <network>
+          <name>br0</name>
+          <forward mode='bridge'/>
+          <bridge name='br0'/>
+        </network>
+        EOF
+        virsh net-start br0
+        virsh net-autostart br0
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: 🔓 STATUS - NUC is ready for OKD Workers
+      ansible.builtin.debug:
+        msg: "NUC hypervisor is now prepared with KVM and Bridged networking."

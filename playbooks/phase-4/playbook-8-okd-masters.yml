@@ -9,35 +9,11 @@
     distribution_root: "/mnt/data/distribution"
 
   tasks:
-    - name: 🔐 SECRET - Load Pull Secret from Hub
-      ansible.builtin.shell: "cat {{ distribution_root }}/secrets/pull_secret.json"
-      register: pull_secret_content
-      changed_when: false
-
-    - name: 📌 SET - Define Pull Secret Fact
-      ansible.builtin.set_fact:
-        pull_secret: "{{ pull_secret_content.stdout | from_json | to_json }}"
-
     - name: 📁 PREP - Create Install Directory
       ansible.builtin.file:
         path: "{{ install_dir }}"
         state: directory
         mode: '0755'
-
-    - name: 📦 TOOLS - Ensure exact OKD 4.19 Binaries exist on lpt-1
-      ansible.builtin.shell: |
-        if ! /usr/local/bin/openshift-install version | grep -q "4.19"; then
-          rm -f /usr/local/bin/openshift-install /usr/local/bin/oc
-          curl -L {{ artifacts.okd_install_url }} | tar -xz -C /usr/local/bin
-          chmod +x /usr/local/bin/openshift-install /usr/local/bin/oc
-        fi
-      changed_when: true
-
-    - name: 📄 CONFIG - Generate install-config.yaml
-      ansible.builtin.template:
-        src: "../../templates/okd/install-config.yaml.j2"
-        dest: "{{ install_dir }}/install-config.yaml"
-        mode: "0644"
 
     - name: 🔥 IGNITION - Nuclear Wipe and Regenerate
       ansible.builtin.shell: |
@@ -45,7 +21,7 @@
         openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
-    - name: 🛠️ PATCH - Inject Hostnames, Static IPs, and LB-Bypass (Ignition 3.2.0)
+    - name: 🛠️ PATCH - Inject Hostnames, Static IPs, and Path Fixes (Ignition 3.2.0)
       ansible.builtin.shell: |
         cat <<EOF > /tmp/patch_ignition.py
         import json, base64, sys
@@ -76,7 +52,6 @@
         id=enp1s0
         type=ethernet
         interface-name=enp1s0
-        
         [ipv4]
         address1={ip}/24,{{ network.mgmt_gateway }}
         dns=192.168.199.10;
@@ -84,88 +59,62 @@
         method=manual
         """
         
-        # 3. DNS BYPASS: Hardcode API records to point to LOAD BALANCER
-        # This ensures we NEVER hit the UniFi wildcard and SSL certificates match
-        hosts_config = f"127.0.0.1   localhost localhost.localdomain\n::1         localhost localhost.localdomain\n192.168.199.60 api-int.okd.homelab.local api.okd.homelab.local\n"
+        # 3. STORAGE (Hostname + Network + /etc/hosts + SELinux)
+        if "storage" not in data: data["storage"] = {}
+        if "files" not in data["storage"]: data["storage"]["files"] = []
+        
+        data["storage"]["files"].append({
+            "path": "/etc/hostname",
+            "mode": 420, "overwrite": True,
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(f"{name}.homelab.local\n".encode()).decode() }
+        })
+        data["storage"]["files"].append({
+            "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
+            "mode": 384, "overwrite": True,
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode() }
+        })
+        data["storage"]["files"].append({
+            "path": "/etc/selinux/config",
+            "mode": 420, "overwrite": True,
+            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode("SELINUX=permissive\nSELINUXTYPE=targeted\n".encode()).decode() }
+        })
 
-        # 4. SELF-HEALING & MANIFEST JUMPSTART (Bootstrap Only)
+        # 4. BOOTSTRAP ONLY FIXES
         if role == "bootstrap":
             if "systemd" not in data: data["systemd"] = {}
             if "units" not in data["systemd"]: data["systemd"]["units"] = []
             
-            pull_dropin = {"name": "10-ignore-failure.conf", "contents": "[Service]\nExecStart=\nExecStart=/usr/bin/bash -c '/usr/local/bin/node-image-pull.sh || true'\n"}
-            data["systemd"]["units"].append({"name": "node-image-pull.service", "dropins": [pull_dropin]})
-
-            finish_dropin = {"name": "10-ignore-failure.conf", "contents": "[Service]\nSuccessExitStatus=1\n"}
-            data["systemd"]["units"].append({"name": "node-image-finish.service", "dropins": [finish_dropin]})
-
             link_unit = {
                 "name": "manifest-link.service",
                 "enabled": True,
                 "contents": "[Unit]\nDescription=OKD Manifest Linker\nBefore=kubelet.service\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/bash -c 'mkdir -p /etc/kubernetes/manifests && ln -sf /opt/openshift/etcd-bootstrap/etc-kubernetes/manifests/*.yaml /etc/kubernetes/manifests/'\nRemainAfterExit=true\n\n[Install]\nWantedBy=multi-user.target\n"
             }
             data["systemd"]["units"].append(link_unit)
-
-        # 5. STORAGE
-        if "storage" not in data: data["storage"] = {}
-        if "files" not in data["storage"]: data["storage"]["files"] = []
-        
-        # Add Hostname
-        data["storage"]["files"].append({
-            "path": "/etc/hostname",
-            "mode": 420, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(f"{name}.homelab.local\n".encode()).decode() }
-        })
-        
-        # Add /etc/hosts (Redirecting to Load Balancer)
-        data["storage"]["files"].append({
-            "path": "/etc/hosts",
-            "mode": 420, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(hosts_config.encode()).decode() }
-        })
-
-        # Add Network Config
-        data["storage"]["files"].append({
-            "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
-            "mode": 384, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode(nm_config.encode()).decode() }
-        })
-        
-        # Add SELinux Config
-        data["storage"]["files"].append({
-            "path": "/etc/selinux/config",
-            "mode": 420, "overwrite": True,
-            "contents": { "source": "data:text/plain;charset=utf-8;base64," + base64.b64encode("SELINUX=permissive\nSELINUXTYPE=targeted\n".encode()).decode() }
-        })
         
         with open(f"{{ install_dir }}/{name}.ign", 'w') as f:
             json.dump(data, f)
         EOF
         
-        python3 /tmp/patch_ignition.py okd-bootstrap 192.168.199.20 bootstrap
-        python3 /tmp/patch_ignition.py okd-master-01 192.168.199.21 master
-        python3 /tmp/patch_ignition.py okd-master-02 192.168.199.22 master
-        python3 /tmp/patch_ignition.py okd-master-03 192.168.199.23 master
+        # Patch Masters
+        {% for vm in okd_vms.masters %}
+        python3 /tmp/patch_ignition.py {{ vm.name }} {{ vm.ip }} {{ 'bootstrap' if 'bootstrap' in vm.name else 'master' }}
+        {% endfor %}
+        # Patch Workers
+        {% for vm in okd_vms.workers %}
+        python3 /tmp/patch_ignition.py {{ vm.name }} {{ vm.ip }} worker
+        {% endfor %}
       changed_when: true
-
-    - name: ✅ VALIDATE - Ensure Patched Ignition is Valid
-      ansible.builtin.shell: |
-        cat {{ install_dir }}/{{ item }}.ign | docker run --rm -i quay.io/coreos/ignition-validate:release -
-      loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03]
-      changed_when: false
 
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
-        src: "{{ install_dir }}/{{ item }}.ign"
-        dest: "{{ distribution_root }}/ign/{{ item }}.ign"
+        src: "{{ install_dir }}/{{ item.name }}.ign"
+        dest: "{{ distribution_root }}/ign/{{ item.name }}.ign"
         remote_src: true
         mode: "0644"
-        owner: 1001
-        group: 1001
-      loop: [okd-bootstrap, okd-master-01, okd-master-02, okd-master-03, worker]
+      loop: "{{ okd_vms.masters + okd_vms.workers }}"
 
-- name: Phase 4.2 - Provision OKD Master VMs on SMS-1 (True One-Click)
-  hosts: management_plane
+- name: Phase 4.2 - Provision OKD VMs on Hypervisors (Masters & Workers)
+  hosts: hypervisors
   become: true
   gather_facts: false
 
@@ -174,19 +123,18 @@
     base_image: "{{ vm_root }}/scos-base.qcow2"
 
   tasks:
-    - name: 💿 BASE - Download SCOS 9 QCOW2 Image to SMS-1
+    - name: 💿 BASE - Ensure SCOS 9 QCOW2 exists
       ansible.builtin.get_url:
         url: "{{ artifacts.scos_qcow2_url }}"
         dest: "{{ base_image }}.gz"
         mode: "0644"
-        force: true
 
     - name: 📦 EXTRACT - Decompress Base Image
-      ansible.builtin.shell: |
-        gunzip -c {{ base_image }}.gz > {{ base_image }}
-      changed_when: true
+      ansible.builtin.shell: "gunzip -c {{ base_image }}.gz > {{ base_image }}"
+      args:
+        creates: "{{ base_image }}"
 
-    - name: 🏗️ VM - Create Clones and Start OKD Masters
+    - name: 🏗️ VM - Create Clones and Start OKD VMs
       ansible.builtin.shell: |
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
@@ -198,7 +146,6 @@
           --vcpus {{ item.cpu }} \
           --os-variant fedora-coreos-stable \
           --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
-          --memballoon model=virtio \
           --import \
           --network bridge=br0,model=virtio \
           --graphics vnc,listen=0.0.0.0 \
@@ -206,22 +153,12 @@
           --wait 0 \
           --events on_poweroff=restart,on_reboot=restart,on_crash=restart \
           --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file={{ vm_root }}/{{ item.name }}.ign"
+      # Only deploy the VM that belongs to THIS physical host
+      when: item.host == inventory_hostname
+      loop: "{{ okd_vms.masters + okd_vms.workers }}"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
-      loop:
-        - { name: "okd-bootstrap", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-01", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-02", ram: 16384, cpu: 4, disk: 100 }
-        - { name: "okd-master-03", ram: 16384, cpu: 4, disk: 100 }
-
-    - name: ⚡ AUTOSTART - Enable VM Persistence
-      ansible.builtin.shell: "virsh autostart {{ item.name }}"
-      loop:
-        - { name: "okd-bootstrap" }
-        - { name: "okd-master-01" }
-        - { name: "okd-master-02" }
-        - { name: "okd-master-03" }
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "OKD 4.19 is deploying. Masters will connect to api-int via our HAProxy Load Balancer."
+        msg: "OKD VMs are now running on their respective hypervisors (SMS-1 and NUCs)."

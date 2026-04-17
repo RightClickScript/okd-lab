@@ -9,152 +9,71 @@ all:
     # Network Infrastructure Configuration
     network:
       mgmt_gateway: "192.168.199.254"
-      primary_dns: "192.168.199.10" # Promoted from UniFi to Windows DC
+      primary_dns: "192.168.199.10"
       secondary_dns: "192.168.1.1"
-      okd_lb_ip: "192.168.199.60" # Dedicated VIP for OKD API
+      okd_lb_ip: "192.168.199.60"
       vlan198_id: 198
       search_domains: ["homelab.local"]
-
-    # AD & DNS Configuration
-    ad:
-      domain_NetBIOS: "homelab"
-      domain_FQDN: "homelab.local"
-      mode: "WinThreshold"
-      upstream_dns_1: "8.8.8.8"
-      upstream_dns_2: "8.8.4.4"
-      reverse_dns_zone: "192.168.199.0/24"
-
-    dcdetails:
-      name: "identity-01"
-      IPAddress: "192.168.199.10"
-      Memory: 4096
-      CPU: 2
-      BootDiskSize: 40
-      iso_url: "http://192.168.199.5:8080/iso/windows-server.iso"
-
-    # KVM & Management (GL.iNet IP-KVM)
-    kvm:
-      ip: "192.168.1.10"
-      user: "admin"
-      pass: "Admin@12345"
-      iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-live-iso.x86_64.iso"
-
-    nuc_mgmt:
-      nuc-1: { port: 1 }
-      nuc-2: { port: 2 }
-      nuc-3: { port: 3 }
-      sms-1: { port: 4 }
-      lpt-1: { port: 5 }
-
-    morpheusdetails:
-      name: "morpheus-01"
-      IPAddress: "192.168.199.11"
-      Memory: 16384
-      CPU: 4
-      BootDiskSize: 250
-      binary_local_path: "../../playbooks/artifacts/bin/morpheus-appliance.deb"
-      binary_remote_path: "/tmp/morpheus-appliance.deb"
-
-    # Lab Init Disk Configuration (ZFS for Snapshots)
-    lab_init:
-      zpool_name: "datapool"
-      zfs_mount_point: "/mnt/data"
-      distribution_root: "/mnt/data/distribution"
 
     # OKD 4.19 & SCOS Artifacts
     artifacts:
       git_repo_url: "https://github.com/RightClickScript/okd-lab.git"
       scos_iso_url: "https://cloud.centos.org/centos/scos/10/prod/streams/latest/x86_64/scos-10.0.20251103-0-live-iso.x86_64.iso"
-      scos_qcow2_url: "https://rhcos.mirror.openshift.com/art/storage/prod/streams/c9s/builds/9.0.20250827-0/x86_64/scos-9.0.20250827-0-qemu.x86_64.qcow2.gz"
+      scos_qcow2_url: "https://rhcos.mirror.openshift.com/art/storage/prod/streams/c9s/builds/9.0.20250510-0/x86_64/scos-9.0.20250510-0-qemu.x86_64.qcow2.gz"
       okd_release_image: "quay.io/okd/scos-release:4.19.0-okd-scos.19"
       okd_client_url: "https://github.com/okd-project/okd/releases/download/4.19.0-okd-scos.19/openshift-client-linux-4.19.0-okd-scos.19.tar.gz"
       okd_install_url: "https://github.com/okd-project/okd/releases/download/4.19.0-okd-scos.19/openshift-install-linux-4.19.0-okd-scos.19.tar.gz"
 
-    # Infrastructure Factory Core Services
-    vault:
-      namespace: "vault"
-      version: "0.28.1"
-      kubeconfig: "/etc/rancher/k3s/k3s.yaml"
-      hostname: "vault.homelab.local"
+    # OKD Cluster VM Definitions
+    okd_vms:
+      masters:
+        - { name: "okd-bootstrap", ip: "192.168.199.20", ram: 16384, cpu: 4, host: "sms-1" }
+        - { name: "okd-master-01", ip: "192.168.199.21", ram: 16384, cpu: 4, host: "sms-1" }
+        - { name: "okd-master-02", ip: "192.168.199.22", ram: 16384, cpu: 4, host: "sms-1" }
+        - { name: "okd-master-03", ip: "192.168.199.23", ram: 16384, cpu: 4, host: "sms-1" }
+      workers:
+        - { name: "okd-worker-01", ip: "192.168.199.31", ram: 16384, cpu: 4, host: "nuc-1" }
+        - { name: "okd-worker-02", ip: "192.168.199.32", ram: 16384, cpu: 4, host: "nuc-2" }
+        - { name: "okd-worker-03", ip: "192.168.199.33", ram: 16384, cpu: 4, host: "nuc-3" }
 
-    awx:
-      namespace: "awx"
-      version: "3.2.1"
-      kubeconfig: "/etc/rancher/k3s/k3s.yaml"
-      hostname: "awx.homelab.local"
   hosts:
-    localhost:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
     lpt-1:
       ansible_host: 192.168.199.5
-      os_disk: "/dev/sda"
-      data_disk: "/dev/sdb"
-      physical_iface: enp0s25
-      ansible_python_interpreter: "/usr/bin/python3"
-      semaphore_port: 3000
-      vault_ui_port: 30002
-      vault_api_port: 30001
-      awx_port: 30005
     sms-1:
       ansible_host: 192.168.199.4
-      os_disk: "/dev/sda"
-      data_disk: "/dev/nvme0n1"
       mac: "3c:ec:ef:76:6d:36"
-      physical_iface: eno1
       type: "sms"
     nuc-1:
       ansible_host: 192.168.199.1
-      os_disk: "/dev/nvme0n1"
-      data_disk: "/dev/sda"
       mac: "1c:69:7a:6b:14:19"
-      physical_iface: eno1
       type: "nuc"
     nuc-2:
       ansible_host: 192.168.199.2
-      os_disk: "/dev/nvme0n1"
-      data_disk: "/dev/sda"
       mac: "1c:69:7a:6b:34:72"
-      physical_iface: eno1
       type: "nuc"
     nuc-3:
       ansible_host: 192.168.199.3
-      os_disk: "/dev/nvme0n1"
-      data_disk: "/dev/sda"
       mac: "1c:69:7a:65:a7:82"
-      physical_iface: eno1
       type: "nuc"
     identity-01:
       ansible_host: 192.168.199.10
-    morpheus-01:
-      ansible_host: 192.168.199.11
+
   children:
     local_spark:
       hosts:
         lpt-1:
     physical:
-      children:
-        management_plane:
-        compute_plane:
-    management_plane:
       hosts:
         sms-1:
-    compute_plane:
+        nuc-1:
+        nuc-2:
+        nuc-3:
+    hypervisors:
       hosts:
+        sms-1:
         nuc-1:
         nuc-2:
         nuc-3:
     windows:
       hosts:
         identity-01:
-      vars:
-        ansible_user: "administrator"
-        ansible_connection: "winrm"
-        ansible_winrm_transport: "basic"
-        ansible_winrm_server_cert_validation: "ignore"
-        ansible_port: 5985
-    morpheus:
-      hosts:
-        morpheus-01:
-      vars:
-        ansible_python_interpreter: "/usr/bin/python3"

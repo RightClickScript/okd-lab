@@ -5,7 +5,6 @@
   gather_facts: false
 
   vars:
-    # We use the main lpt-1 IP for Host Mode to ensure maximum speed
     pxe_ip: "192.168.199.5"
     ui_port: 30010
     http_port: 8081
@@ -28,7 +27,6 @@
         image: ghcr.io/netbootxyz/netbootxyz:latest
         restart_policy: always
         network_mode: host
-        # In Host Mode, we use environment variables to change ports
         env:
           PORT: "{{ ui_port | string }}"
           NGINX_PORT: "{{ http_port | string }}"
@@ -37,19 +35,27 @@
           - "{{ assets_dir }}:/assets"
         state: started
 
-    - name: 🛠️ CONFIG - Download Standalone iPXE
+    - name: 🛠️ CONFIG - Download Standalone iPXE Binaries
       ansible.builtin.get_url:
-        url: "https://boot.netboot.xyz/ipxe/netboot.xyz-metal.efi"
-        dest: "{{ config_dir }}/netboot.xyz.efi"
+        url: "https://boot.netboot.xyz/ipxe/{{ item.src }}"
+        dest: "{{ config_dir }}/{{ item.dest }}"
         mode: '0644'
         force: true
+      loop:
+        - { src: "netboot.xyz-metal.efi", dest: "netboot.xyz.efi" }
+        - { src: "netboot.xyz.kpxe", dest: "netboot.xyz.kpxe" }
+
+    - name: 🛠️ CONFIG - Enable DHCP Auto-Selection
+      ansible.builtin.replace:
+        path: "{{ config_dir }}/menus/boot.cfg"
+        regexp: 'set dhcp_retry 0'
+        replace: 'set dhcp_retry 1'
+      ignore_errors: true # In case the file hasn't been created by the container yet
 
     - name: 🔓 STATUS - Netboot is Live
       ansible.builtin.debug:
         msg: |
           Netboot.xyz is now active in HOST MODE!
-          Web UI: http://{{ pxe_ip }}:{{ ui_port }}
           
-          UNIFI SETTINGS (CRITICAL):
-          1. Set DHCP Option 66 to: {{ pxe_ip }}
-          2. Set DHCP Option 67 to: /netboot.xyz.efi
+          RECOMMENDED ACTION:
+          If UEFI (.efi) continues to freeze, change UniFi Option 67 to: /netboot.xyz.kpxe

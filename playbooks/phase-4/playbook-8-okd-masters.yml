@@ -189,6 +189,9 @@
       ansible.builtin.shell: |
         qemu-img create -f qcow2 -F qcow2 -b {{ base_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk | default(100) }}G
         curl -o {{ vm_root }}/{{ item.name }}.ign http://192.168.199.5:8080/ign/{{ item.name }}.ign
+        # Ensure QEMU can read the ignition file
+        chown libvirt-qemu:kvm {{ vm_root }}/{{ item.name }}.ign
+        chmod 0644 {{ vm_root }}/{{ item.name }}.ign
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \

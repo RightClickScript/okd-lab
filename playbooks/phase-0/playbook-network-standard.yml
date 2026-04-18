@@ -8,6 +8,56 @@
         ls /etc/netplan/*.yaml | grep -v "00-installer-config.yaml.bak" | xargs -I {} mv {} {}.bak
       ignore_errors: true
 
+    - name: 🏗️ TOOLS - Ensure ethtool is present for TSO fix
+      ansible.builtin.apt:
+        name: ethtool
+        state: present
+        update_cache: true
+
+    - name: 🛠️ TSO - Deploy disable-tso script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/disable-tso.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Get all network interfaces
+          for iface in $(ls /sys/class/net); do
+              # Skip loopback and virtual interfaces
+              if [[ "$iface" == "lo" ]] || [[ ! -e "/sys/class/net/$iface/device" ]]; then
+                  continue
+              fi
+
+              # Check if ethtool supports TSO on this interface
+              if ethtool -k "$iface" 2>/dev/null | grep -q 'tcp-segmentation-offload'; then
+                  echo "Disabling TSO on $iface"
+                  ethtool -K "$iface" tso off
+              fi
+          done
+
+    - name: 🛠️ TSO - Deploy disable-tso systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/disable-tso.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Disable TSO on multiple NICs
+          After=network.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/disable-tso.sh
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: 🚀 TSO - Enable and start disable-tso service
+      ansible.builtin.systemd:
+        name: disable-tso
+        enabled: true
+        state: started
+        daemon_reload: true
+
     - name: 🛠️ NETPLAN - Generate Standard Configuration (br0 + vlan198)
       ansible.builtin.template:
         src: "../../templates/network/netplan-standard.yaml.j2"

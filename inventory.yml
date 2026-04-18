@@ -16,6 +16,23 @@ all:
       vlan198_id: 198
       search_domains: ["homelab.local"]
 
+    # AD & DNS Configuration
+    ad:
+      domain_NetBIOS: "homelab"
+      domain_FQDN: "homelab.local"
+      mode: "WinThreshold"
+      upstream_dns_1: "8.8.8.8"
+      upstream_dns_2: "8.8.4.4"
+      reverse_dns_zone: "192.168.199.0/24"
+
+    dcdetails:
+      name: "identity-01"
+      IPAddress: "192.168.199.10"
+      Memory: 4096
+      CPU: 2
+      BootDiskSize: 40
+      iso_url: "http://192.168.199.5:8080/iso/windows-server.iso"
+
     # OKD 4.19 & SCOS Artifacts
     artifacts:
       git_repo_url: "https://github.com/RightClickScript/okd-lab.git"

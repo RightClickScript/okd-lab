@@ -24,10 +24,9 @@
       - { name: "Phase 3: Identity (Fix DNS & OKD Records)", playbook: "playbooks/phase-3/playbook-5c-dns-fix.yml" }
       - { name: "Phase 3: OKD Load Balancer (HAProxy)", playbook: "playbooks/phase-3/playbook-6-load-balancer.yml" }
       - { name: "Phase 3: Morpheus Appliance", playbook: "playbooks/phase-3/playbook-7-morpheus.yml" }
-      - { name: "Phase 4: OKD Control Plane (Masters)", playbook: "playbooks/phase-4/playbook-8-okd-masters.yml" }
+      - { name: "Phase 4: OKD Control Plane (Full Fleet)", playbook: "playbooks/phase-4/playbook-8-okd-masters.yml" }
       - { name: "Phase 4: OKD Bootstrap (Wait & Handoff)", playbook: "playbooks/phase-4/playbook-8b-okd-bootstrap-wait.yml" }
       - { name: "Phase 4: OKD Identity (AD Integration)", playbook: "playbooks/phase-4/playbook-8c-okd-ad-auth.yml" }
-      - { name: "Phase 4: OKD Workers (NUCs Join)", playbook: "playbooks/phase-4/playbook-9-okd-workers.yml" }
 
   tasks:
     - name: 🔑 AUTH - Login

@@ -1,4 +1,17 @@
 ---
+- name: Phase 4.0 - Nuclear Cleanup (All Hypervisors)
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 🧹 CLEAN - Destroy existing OKD VMs (If any)
+      ansible.builtin.shell: |
+        for vm in $(virsh list --all --name | grep 'okd-'); do
+          virsh destroy $vm || true
+          virsh undefine $vm --remove-all-storage || true
+        done
+      changed_when: true
+
 - name: Phase 4.1 - Generate and Patch OKD Ignition (lpt-1)
   hosts: local_spark
   become: true
@@ -18,7 +31,7 @@
     - name: 🔥 IGNITION - Nuclear Wipe and Regenerate
       ansible.builtin.shell: |
         find {{ install_dir }} -mindepth 1 ! -name 'install-config.yaml' -delete
-        openshift-install create ignition-configs --dir={{ install_dir }}
+        /usr/local/bin/openshift-install create ignition-configs --dir={{ install_dir }}
       changed_when: true
 
     - name: 🛠️ PATCH - Inject Hostnames, Static IPs, and Path Fixes (Ignition 3.2.0)
@@ -109,6 +122,12 @@
         {% endfor %}
       changed_when: true
 
+    - name: ✅ VALIDATE - Ensure Patched Ignition is Valid
+      ansible.builtin.shell: |
+        cat {{ install_dir }}/{{ item.name }}.ign | docker run --rm -i quay.io/coreos/ignition-validate:release -
+      loop: "{{ okd_vms.masters + okd_vms.workers }}"
+      changed_when: false
+
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
         src: "{{ install_dir }}/{{ item.name }}.ign"
@@ -117,7 +136,7 @@
         mode: "0644"
       loop: "{{ okd_vms.masters + okd_vms.workers }}"
 
-- name: Phase 4.2 - Provision OKD VMs (Full Fleet Reconstruction)
+- name: Phase 4.2 - Provision OKD VMs (Full Fleet Construction)
   hosts: hypervisors
   become: true
   gather_facts: false
@@ -127,14 +146,6 @@
     base_image: "{{ vm_root }}/scos-base.qcow2"
 
   tasks:
-    - name: 🧹 CLEAN - Destroy existing OKD VMs (If any)
-      ansible.builtin.shell: |
-        for vm in $(virsh list --all --name | grep 'okd-'); do
-          virsh destroy $vm || true
-          virsh undefine $vm --remove-all-storage || true
-        done
-      changed_when: true
-
     - name: 💿 BASE - Ensure SCOS 9 QCOW2 exists
       ansible.builtin.get_url:
         url: "{{ artifacts.scos_qcow2_url }}"
@@ -177,4 +188,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "Old cluster cleared. New 7-node cluster is now initializing on physical hypervisors."
+        msg: "Old VMs cleared. New fleet is initializing."

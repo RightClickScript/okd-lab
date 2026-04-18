@@ -40,22 +40,27 @@ all:
   hosts:
     lpt-1:
       ansible_host: 192.168.199.5
+      physical_iface: "enp0s25"
     sms-1:
       ansible_host: 192.168.199.4
+      physical_iface: "eno1"
       mac: "3c:ec:ef:76:6d:36"
       type: "sms"
     nuc-1:
       ansible_host: 192.168.199.1
+      physical_iface: "eno1"
       mac: "1c:69:7a:6b:14:19"
       data_disk: "/dev/sda"
       type: "nuc"
     nuc-2:
       ansible_host: 192.168.199.2
+      physical_iface: "eno1"
       mac: "1c:69:7a:6b:34:72"
       data_disk: "/dev/sda"
       type: "nuc"
     nuc-3:
       ansible_host: 192.168.199.3
+      physical_iface: "eno1"
       mac: "1c:69:7a:65:a7:82"
       data_disk: "/dev/sda"
       type: "nuc"

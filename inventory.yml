@@ -47,14 +47,17 @@ all:
     nuc-1:
       ansible_host: 192.168.199.1
       mac: "1c:69:7a:6b:14:19"
+      data_disk: "/dev/sda"
       type: "nuc"
     nuc-2:
       ansible_host: 192.168.199.2
       mac: "1c:69:7a:6b:34:72"
+      data_disk: "/dev/sda"
       type: "nuc"
     nuc-3:
       ansible_host: 192.168.199.3
       mac: "1c:69:7a:65:a7:82"
+      data_disk: "/dev/sda"
       type: "nuc"
     identity-01:
       ansible_host: 192.168.199.10
@@ -72,6 +75,11 @@ all:
     hypervisors:
       hosts:
         sms-1:
+        nuc-1:
+        nuc-2:
+        nuc-3:
+    compute_plane:
+      hosts:
         nuc-1:
         nuc-2:
         nuc-3:

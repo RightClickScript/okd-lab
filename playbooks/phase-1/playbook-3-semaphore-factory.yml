@@ -14,6 +14,7 @@
       - { name: "Phase 0: Lab Control (Shutdown)", playbook: "playbooks/phase-0/playbook-lab-power.yml", arguments: "--tags power_off" }
       - { name: "Phase 0: Lab Control (Startup)", playbook: "playbooks/phase-0/playbook-lab-power.yml", arguments: "--tags power_on" }
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
+      - { name: "Phase 0: Standardize Lab Networking", playbook: "playbooks/phase-0/playbook-network-standard.yml" }
       - { name: "Factory: Deploy HashiCorp Vault", playbook: "playbooks/phase-1/playbook-4-vault-deploy.yml" }
       - { name: "Factory: Deploy Ansible AWX", playbook: "playbooks/phase-1/playbook-5-awx-deploy.yml" }
       - { name: "Factory: Deploy Netboot (PXE Server)", playbook: "playbooks/phase-1/playbook-6-netboot-deploy.yml" }

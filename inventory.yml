@@ -33,9 +33,9 @@ all:
         - { name: "okd-master-02", ip: "192.168.199.22", ram: 16384, cpu: 4, host: "sms-1" }
         - { name: "okd-master-03", ip: "192.168.199.23", ram: 16384, cpu: 4, host: "sms-1" }
       workers:
-        - { name: "okd-worker-01", ip: "192.168.199.31", ram: 16384, cpu: 4, host: "nuc-1" }
-        - { name: "okd-worker-02", ip: "192.168.199.32", ram: 16384, cpu: 4, host: "nuc-2" }
-        - { name: "okd-worker-03", ip: "192.168.199.33", ram: 16384, cpu: 4, host: "nuc-3" }
+        - { name: "okd-worker-01", ip: "192.168.199.31", ram: 32768, cpu: 4, host: "nuc-1" }
+        - { name: "okd-worker-02", ip: "192.168.199.32", ram: 32768, cpu: 4, host: "nuc-2" }
+        - { name: "okd-worker-03", ip: "192.168.199.33", ram: 32768, cpu: 4, host: "nuc-3" }
 
   hosts:
     lpt-1:

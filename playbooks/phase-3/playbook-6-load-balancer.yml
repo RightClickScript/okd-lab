@@ -10,11 +10,15 @@
     mcs_port: 22623
     http_port: 80
     https_port: 443
-    nodes:
+    masters:
       - { name: "okd-bootstrap", ip: "192.168.199.20" }
       - { name: "okd-master-01", ip: "192.168.199.21" }
       - { name: "okd-master-02", ip: "192.168.199.22" }
       - { name: "okd-master-03", ip: "192.168.199.23" }
+    workers:
+      - { name: "okd-worker-01", ip: "192.168.199.31" }
+      - { name: "okd-worker-02", ip: "192.168.199.32" }
+      - { name: "okd-worker-03", ip: "192.168.199.33" }
 
   tasks:
     - name: 🌐 NETWORK - Hardened Netplan Update (SED Based)
@@ -48,8 +52,8 @@
           backend okd-api-backend
               mode tcp
               balance roundrobin
-              {% for node in nodes %}
-              server {{ node.name }} {{ node.ip }}:{{ api_port }} check
+              {% for node in masters %}
+              server {{ node.name }} {{ node.ip }}:{{ api_port }}
               {% endfor %}
 
           #---------------------------------------------------------------------
@@ -64,8 +68,8 @@
           backend okd-mcs-backend
               mode tcp
               balance roundrobin
-              {% for node in nodes %}
-              server {{ node.name }} {{ node.ip }}:{{ mcs_port }} check
+              {% for node in masters %}
+              server {{ node.name }} {{ node.ip }}:{{ mcs_port }}
               {% endfor %}
 
           #---------------------------------------------------------------------
@@ -80,7 +84,7 @@
           backend okd-http-backend
               mode tcp
               balance roundrobin
-              {% for node in nodes if node.name != 'okd-bootstrap' %}
+              {% for node in workers %}
               server {{ node.name }} {{ node.ip }}:{{ http_port }} check
               {% endfor %}
 
@@ -96,7 +100,7 @@
           backend okd-https-backend
               mode tcp
               balance roundrobin
-              {% for node in nodes if node.name != 'okd-bootstrap' %}
+              {% for node in workers %}
               server {{ node.name }} {{ node.ip }}:{{ https_port }} check
               {% endfor %}
 

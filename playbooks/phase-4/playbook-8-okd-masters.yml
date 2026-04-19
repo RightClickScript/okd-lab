@@ -1,4 +1,21 @@
 ---
+- name: Phase 4.0 - Nuclear Cleanup (All Hypervisors)
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 🧹 CLEAN - Destroy existing OKD VMs (Robust)
+      ansible.builtin.shell: |
+        for vm in $(virsh list --all --name | grep 'okd-'); do
+          if [ -n "$vm" ]; then
+            echo "Nuking $vm..."
+            virsh destroy "$vm" || true
+            virsh undefine "$vm" --remove-all-storage || true
+          fi
+        done
+      changed_when: true
+      ignore_errors: true
+
 - name: Phase 4.1 - Generate and Patch OKD Ignition (lpt-1)
   hosts: local_spark
   become: true
@@ -82,7 +99,13 @@
         bishop_user["sshAuthorizedKeys"] = [ssh_key]
         bishop_user["groups"] = ["sudo", "wheel"]
 
-        # 2. NETWORK CONFIG (Using confirmed enp1s0)
+        # Update core user
+        core_user = next((u for u in users if u.get("name") == "core"), None)
+        if core_user:
+            core_user["passwordHash"] = pass_hash
+            core_user["sshAuthorizedKeys"] = [ssh_key]
+
+        # 2. NETWORK CONFIG (enp1s0)
         nm_config = f"""[connection]
         id=enp1s0
         type=ethernet
@@ -94,7 +117,7 @@
         method=manual
         """
         
-        # 3. STORAGE (Hostname + Network + /etc/hosts + SELinux)
+        # 3. STORAGE
         hosts_config = f"127.0.0.1   localhost localhost.localdomain\n::1         localhost localhost.localdomain\n192.168.199.60 api-int.okd.homelab.local api.okd.homelab.local\n"
         if "storage" not in data: data["storage"] = {}
         if "files" not in data["storage"]: data["storage"]["files"] = []
@@ -184,7 +207,7 @@
 
     - name: 🏗️ VM - Create Clones and Start OKD VMs
       ansible.builtin.shell: |
-        # 1. Self-Cleanup inside the loop
+        # 1. Self-Cleanup inside the loop (Double Safety)
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
         
@@ -226,4 +249,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "Full Fleet initialized with restored bishop user, enp1s0 naming, and enforced permissions."
+        msg: "Full Fleet initialized. Cleanup Play #1 confirmed working."

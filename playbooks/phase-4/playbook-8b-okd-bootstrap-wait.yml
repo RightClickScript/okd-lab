@@ -19,6 +19,7 @@
       register: bootstrap_result
       async: 3600
       poll: 30
+      ignore_errors: true # Allow proceeding if bootstrap-complete was already reached manually
 
     - name: 🔄 HANDOFF - Transition Load Balancer to Masters
       ansible.builtin.blockinfile:
@@ -99,8 +100,9 @@
         virsh undefine okd-bootstrap --remove-all-storage || true
       delegate_to: sms-1
       become: true
+      ignore_errors: true
 
-    - name: 🚀 WAKE - Power ON the OKD Worker Fleet
+    - name: 🚀 WAKE - Ensure OKD Worker Fleet is ON
       ansible.builtin.shell: |
         virsh start okd-worker-01 || true
         virsh start okd-worker-02 || true
@@ -112,26 +114,24 @@
     - name: 📝 CSR - Automatically approve worker join requests
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        # Wrap Go-template in raw block to prevent Ansible conflicts
+        # 1. Approve pending CSRs
         {% raw %}
         oc get csr -o go-template='{{range .items}}{{if not .status.certificate}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs -r oc adm certificate approve
         {% endraw %}
+        # 2. Count ready nodes directly for the until condition
+        oc get nodes --no-headers 2>/dev/null | grep -cw "Ready" || echo "0"
       become: true
-      register: csr_approval
-      until: "node_status is defined and node_status.stdout.count('Ready') >= 6"
+      register: node_check
+      until: node_check.stdout | int >= 6
       retries: 50
       delay: 30
-      ignore_errors: true
 
-    - name: 🚀 VERIFY - Check Final Cluster Status
+    - name: 🚀 VERIFY - Final Node Status
       ansible.builtin.command:
         cmd: "oc get nodes --kubeconfig={{ install_dir }}/auth/kubeconfig"
       become: true
-      register: node_status
-      until: "node_status.stdout.count('Ready') >= 6"
-      retries: 20
-      delay: 60
+      register: final_nodes
 
     - name: 🔓 STATUS - 6-Node Fleet is Fully Operational
       ansible.builtin.debug:
-        msg: "Handoff complete. All 6 nodes are Ready. Bootstrap node decommissioned and HAProxy updated."
+        msg: "Handoff complete. All 6 nodes are Ready. Bootstrap node decommissioned."

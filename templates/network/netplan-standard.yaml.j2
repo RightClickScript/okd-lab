@@ -18,7 +18,7 @@ network:
       interfaces: [bond0]
       addresses:
         - {{ ansible_host }}/24
-        {% if inventory_hostname == 'lpt-1' %}
+        {% if ansible_host == '192.168.199.5' %}
         - {{ network.okd_lb_ip }}/24
         - {{ network.netboot_ip }}/24
         {% endif %}

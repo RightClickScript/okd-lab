@@ -4,17 +4,23 @@
   become: true
   gather_facts: false
   tasks:
-    - name: 🧹 CLEAN - Destroy existing OKD VMs (Robust)
+    - name: 🔎 INFO - Identifying host
+      ansible.builtin.debug:
+        msg: "Cleaning up OKD VMs on {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: 🧹 CLEAN - Destroy and Undefine OKD VMs
       ansible.builtin.shell: |
-        for vm in $(virsh list --all --name | grep 'okd-'); do
+        # Get list of VMs, filter for okd-, and wipe them
+        vms=$(virsh list --all --name | grep 'okd-') || true
+        for vm in $vms; do
           if [ -n "$vm" ]; then
-            echo "Nuking $vm..."
+            echo "Nuking $vm on {{ inventory_hostname }}..."
             virsh destroy "$vm" || true
             virsh undefine "$vm" --remove-all-storage || true
+            rm -f "/var/lib/libvirt/images/$vm.ign" || true
           fi
         done
       changed_when: true
-      ignore_errors: true
 
 - name: Phase 4.1 - Generate and Patch OKD Ignition (lpt-1)
   hosts: local_spark
@@ -207,7 +213,7 @@
 
     - name: 🏗️ VM - Create Clones and Start OKD VMs
       ansible.builtin.shell: |
-        # 1. Self-Cleanup inside the loop (Double Safety)
+        # 1. Final Cleanup (Triple Safety)
         virsh destroy {{ item.name }} || true
         virsh undefine {{ item.name }} --remove-all-storage || true
         
@@ -249,4 +255,4 @@
 
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "Full Fleet initialized. Cleanup Play #1 confirmed working."
+        msg: "Full Fleet initialized. Nuclear Cleanup confirmed on {{ inventory_hostname }}."

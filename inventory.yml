@@ -108,3 +108,9 @@ all:
     windows:
       hosts:
         identity-01:
+      vars:
+        ansible_user: "administrator"
+        ansible_connection: "winrm"
+        ansible_winrm_transport: "basic"
+        ansible_winrm_server_cert_validation: "ignore"
+        ansible_port: 5985

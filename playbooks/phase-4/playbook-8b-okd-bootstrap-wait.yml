@@ -4,6 +4,11 @@
   gather_facts: false
   vars:
     install_dir: "/opt/okd-cluster"
+    lb_ip: "192.168.199.60"
+    masters:
+      - { name: "okd-master-01", ip: "192.168.199.21" }
+      - { name: "okd-master-02", ip: "192.168.199.22" }
+      - { name: "okd-master-03", ip: "192.168.199.23" }
   
   tasks:
     - name: ⏳ WAIT - Monitoring OKD Bootstrap Process
@@ -14,11 +19,67 @@
       async: 3600
       poll: 30
 
-    - name: 🔄 HANDOFF - Comment out Bootstrap node in HAProxy
-      ansible.builtin.replace:
+    - name: 🔄 HANDOFF - Transition Load Balancer to Masters
+      ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
-        regexp: '^(\s*server okd-bootstrap 192.168.199.20.*)'
-        replace: '# \1'
+        marker: "# {mark} OKD LOAD BALANCER CONFIG"
+        block: |
+          #---------------------------------------------------------------------
+          # OKD API (6443) - MASTERS ONLY
+          #---------------------------------------------------------------------
+          frontend okd-api
+              bind {{ lb_ip }}:6443
+              mode tcp
+              default_backend okd-api-backend
+
+          backend okd-api-backend
+              mode tcp
+              balance roundrobin
+              {% for node in masters %}
+              server {{ node.name }} {{ node.ip }}:{{ api_port | default(6443) }} check
+              {% endfor %}
+
+          #---------------------------------------------------------------------
+          # OKD Machine Config Server (22623) - MASTERS ONLY
+          #---------------------------------------------------------------------
+          frontend okd-mcs
+              bind {{ lb_ip }}:22623
+              mode tcp
+              default_backend okd-mcs-backend
+
+          backend okd-mcs-backend
+              mode tcp
+              balance roundrobin
+              {% for node in masters %}
+              server {{ node.name }} {{ node.ip }}:22623 check
+              {% endfor %}
+
+          #---------------------------------------------------------------------
+          # OKD Ingress (80/443) - Workers
+          #---------------------------------------------------------------------
+          frontend okd-http
+              bind {{ lb_ip }}:80
+              mode tcp
+              default_backend okd-http-backend
+
+          backend okd-http-backend
+              mode tcp
+              balance roundrobin
+              server okd-worker-01 192.168.199.31:80 check
+              server okd-worker-02 192.168.199.32:80 check
+              server okd-worker-03 192.168.199.33:80 check
+
+          frontend okd-https
+              bind {{ lb_ip }}:443
+              mode tcp
+              default_backend okd-https-backend
+
+          backend okd-https-backend
+              mode tcp
+              balance roundrobin
+              server okd-worker-01 192.168.199.31:443 check
+              server okd-worker-02 192.168.199.32:443 check
+              server okd-worker-03 192.168.199.33:443 check
       become: true
       register: lb_handoff
 
@@ -36,53 +97,35 @@
       delegate_to: sms-1
       become: true
 
-    - name: 📁 CONFIG - Ensure .kube directory exists for Bishop
-      ansible.builtin.file:
-        path: "/home/bishop/.kube"
-        state: directory
-        owner: bishop
-        group: bishop
-        mode: '0700'
+    - name: 🚀 WAKE - Power ON the OKD Worker Fleet
+      ansible.builtin.shell: |
+        virsh start okd-worker-01 || true
+        virsh start okd-worker-02 || true
+        virsh start okd-worker-03 || true
+      delegate_to: "{{ item }}"
+      loop: ["nuc-1", "nuc-2", "nuc-3"]
       become: true
 
-    - name: 📄 CONFIG - Copy Kubeconfig to Bishop Home
-      ansible.builtin.copy:
-        src: "{{ install_dir }}/auth/kubeconfig"
-        dest: "/home/bishop/.kube/config"
-        owner: bishop
-        group: bishop
-        mode: '0600'
-        remote_src: true
-      become: true
-
-    - name: ⚙️ CONFIG - Set KUBECONFIG variable in Bishop .bashrc
-      ansible.builtin.lineinfile:
-        path: /home/bishop/.bashrc
-        line: 'export KUBECONFIG=~/.kube/config'
-        state: present
-      become: true
-
-    - name: 📝 CSR - Automatically approve pending CSRs
+    - name: 📝 CSR - Automatically approve worker join requests
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        oc --insecure-skip-tls-verify get csr -o name | xargs -r oc --insecure-skip-tls-verify adm certificate approve
+        oc get csr -o name | xargs -r oc adm certificate approve
       become: true
       register: csr_approval
       until: "csr_approval is success"
       retries: 10
       delay: 30
 
-    - name: 🚀 VERIFY - Check Master Node Status
+    - name: 🚀 VERIFY - Check Final Cluster Status
       ansible.builtin.command:
-        cmd: "oc --insecure-skip-tls-verify get nodes"
+        cmd: "oc get nodes"
       environment:
         KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
-      become: true
       register: node_status
-      until: "node_status.stdout.count('Ready') >= 3"
+      until: "node_status.stdout.count('Ready') >= 6"
       retries: 20
       delay: 60
 
-    - name: 🔓 STATUS - OKD Control Plane is Ready
+    - name: 🔓 STATUS - 6-Node Fleet is Fully Operational
       ansible.builtin.debug:
-        msg: "Handoff complete. Bishop user is now fully configured for cluster management."
+        msg: "Full Fleet Ready! Masters healthy, LB updated, Bootstrap deleted, and Workers joined."

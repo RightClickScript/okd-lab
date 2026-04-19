@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-6 - Deploy OKD Load Balancer (Full Stack & Validated)
+- name: Phase 3-6 - Deploy OKD Load Balancer (Full Stack & Persistent)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -10,8 +10,8 @@
     mcs_port: 22623
     http_port: 80
     https_port: 443
-    bootstrap_ip: "192.168.199.20"
     masters:
+      - { name: "okd-bootstrap", ip: "192.168.199.20" }
       - { name: "okd-master-01", ip: "192.168.199.21" }
       - { name: "okd-master-02", ip: "192.168.199.22" }
       - { name: "okd-master-03", ip: "192.168.199.23" }
@@ -21,7 +21,7 @@
       - { name: "okd-worker-03", ip: "192.168.199.33" }
 
   tasks:
-    - name: ⚙️ CONFIG - Generate Clean haproxy.cfg
+    - name: ⚙️ CONFIG - Generate haproxy.cfg (Master-Aware)
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
@@ -37,13 +37,13 @@
           backend okd-api-backend
               mode tcp
               balance roundrobin
-              server okd-bootstrap {{ bootstrap_ip }}:{{ api_port }} check
               {% for node in masters %}
               server {{ node.name }} {{ node.ip }}:{{ api_port }} check
               {% endfor %}
 
           #---------------------------------------------------------------------
           # OKD Machine Config Server (22623)
+          # During bootstrap, this points to .20. Post-bootstrap, it MUST point to Masters.
           #---------------------------------------------------------------------
           frontend okd-mcs
               bind {{ lb_ip }}:{{ mcs_port }}
@@ -52,10 +52,13 @@
 
           backend okd-mcs-backend
               mode tcp
-              server okd-bootstrap {{ bootstrap_ip }}:{{ mcs_port }} check
+              balance roundrobin
+              {% for node in masters %}
+              server {{ node.name }} {{ node.ip }}:{{ mcs_port }} check
+              {% endfor %}
 
           #---------------------------------------------------------------------
-          # OKD HTTP Ingress (80)
+          # OKD Ingress (80/443)
           #---------------------------------------------------------------------
           frontend okd-http
               bind {{ lb_ip }}:{{ http_port }}
@@ -69,9 +72,6 @@
               server {{ node.name }} {{ node.ip }}:{{ http_port }} check
               {% endfor %}
 
-          #---------------------------------------------------------------------
-          # OKD HTTPS Ingress (443)
-          #---------------------------------------------------------------------
           frontend okd-https
               bind {{ lb_ip }}:{{ https_port }}
               mode tcp
@@ -84,7 +84,7 @@
               server {{ node.name }} {{ node.ip }}:{{ https_port }} check
               {% endfor %}
 
-    - name: 🔄 RESTART - Apply Clean Configuration
+    - name: 🔄 RESTART - Apply Configuration
       ansible.builtin.systemd:
         name: haproxy
         state: restarted

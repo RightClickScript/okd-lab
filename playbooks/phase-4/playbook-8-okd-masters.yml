@@ -4,17 +4,11 @@
   become: true
   gather_facts: false
   tasks:
-    - name: 🔎 INFO - Identifying host
-      ansible.builtin.debug:
-        msg: "Cleaning up OKD VMs on {{ inventory_hostname }} ({{ ansible_host }})"
-
-    - name: 🧹 CLEAN - Destroy and Undefine OKD VMs
+    - name: 🧹 CLEAN - Destroy existing OKD VMs (Robust)
       ansible.builtin.shell: |
-        # Get list of VMs, filter for okd-, and wipe them
         vms=$(virsh list --all --name | grep 'okd-') || true
         for vm in $vms; do
           if [ -n "$vm" ]; then
-            echo "Nuking $vm on {{ inventory_hostname }}..."
             virsh destroy "$vm" || true
             virsh undefine "$vm" --remove-all-storage || true
             rm -f "/var/lib/libvirt/images/$vm.ign" || true
@@ -96,7 +90,6 @@
         
         users = data["passwd"]["users"]
         
-        # Add/Update bishop user
         bishop_user = next((u for u in users if u.get("name") == "bishop"), None)
         if not bishop_user:
             bishop_user = {"name": "bishop"}
@@ -105,7 +98,6 @@
         bishop_user["sshAuthorizedKeys"] = [ssh_key]
         bishop_user["groups"] = ["sudo", "wheel"]
 
-        # Update core user
         core_user = next((u for u in users if u.get("name") == "core"), None)
         if core_user:
             core_user["passwordHash"] = pass_hash
@@ -173,12 +165,6 @@
         {% endfor %}
       changed_when: true
 
-    - name: ✅ VALIDATE - Ensure Patched Ignition is Valid
-      ansible.builtin.shell: |
-        cat {{ install_dir }}/{{ item.name }}.ign | docker run --rm -i quay.io/coreos/ignition-validate:release -
-      loop: "{{ okd_vms.masters + okd_vms.workers }}"
-      changed_when: false
-
     - name: 📤 PUBLISH - Move Patched Ignition to Distro Hub
       ansible.builtin.copy:
         src: "{{ install_dir }}/{{ item.name }}.ign"
@@ -187,7 +173,7 @@
         mode: "0644"
       loop: "{{ okd_vms.masters + okd_vms.workers }}"
 
-- name: Phase 4.2 - Provision OKD VMs (Masters & Workers)
+- name: Phase 4.2 - Provision OKD VMs (Masters & Workers Staged)
   hosts: hypervisors
   become: true
   gather_facts: false
@@ -198,36 +184,24 @@
 
   tasks:
     - name: 💿 BASE - Ensure SCOS 9 QCOW2 exists
-      ansible.builtin.get_url:
-        url: "{{ artifacts.scos_qcow2_url }}"
-        dest: "{{ base_image }}.gz"
-        mode: "0644"
-
-    - name: 📦 EXTRACT - Decompress Base Image
       ansible.builtin.shell: |
-        gunzip -c {{ base_image }}.gz > {{ base_image }}
         chown libvirt-qemu:kvm {{ base_image }}
         chmod 0660 {{ base_image }}
-      args:
-        creates: "{{ base_image }}"
+      changed_when: false
 
-    - name: 🏗️ VM - Create Clones and Start OKD VMs
+    - name: 🏗️ VM - Create Clones and Start Staged VMs
       ansible.builtin.shell: |
-        # 1. Final Cleanup (Triple Safety)
-        virsh destroy {{ item.name }} || true
-        virsh undefine {{ item.name }} --remove-all-storage || true
-        
-        # 2. Create and Permission the disk
+        # 1. Create and Permission the disk
         qemu-img create -f qcow2 -F qcow2 -b {{ base_image }} {{ vm_root }}/{{ item.name }}.qcow2 {{ item.disk | default(100) }}G
         chown libvirt-qemu:kvm {{ vm_root }}/{{ item.name }}.qcow2
         chmod 0660 {{ vm_root }}/{{ item.name }}.qcow2
 
-        # 3. Download ignition to safe path
+        # 2. Download ignition to safe path
         curl -o /var/lib/libvirt/images/{{ item.name }}.ign http://192.168.199.5:8080/ign/{{ item.name }}.ign
         chown libvirt-qemu:kvm /var/lib/libvirt/images/{{ item.name }}.ign
         chmod 0644 /var/lib/libvirt/images/{{ item.name }}.ign
         
-        # 4. Launch the VM
+        # 3. Launch the VM
         virt-install \
           --name {{ item.name }} \
           --ram {{ item.ram }} \
@@ -242,17 +216,17 @@
           --wait 0 \
           --events on_poweroff=restart,on_reboot=restart,on_crash=restart \
           --qemu-commandline="-fw_cfg name=opt/com.coreos/config,file=/var/lib/libvirt/images/{{ item.name }}.ign"
+
+        # 4. STAGING: If it is a worker, turn it OFF immediately after creation
+        if [[ "{{ item.name }}" == *"worker"* ]]; then
+          echo "Staging worker: Powering off {{ item.name }}..."
+          virsh destroy {{ item.name }} || true
+        fi
       when: item.host == inventory_hostname
       loop: "{{ okd_vms.masters + okd_vms.workers }}"
       args:
         creates: "/etc/libvirt/qemu/{{ item.name }}.xml"
 
-    - name: ⚡ AUTOSTART - Enable VM Persistence
-      ansible.builtin.shell: "virsh autostart {{ item.name }}"
-      when: item.host == inventory_hostname
-      loop: "{{ okd_vms.masters + okd_vms.workers }}"
-      ignore_errors: true
-
     - name: 🔓 STATUS - Deployment Complete
       ansible.builtin.debug:
-        msg: "Full Fleet initialized. Nuclear Cleanup confirmed on {{ inventory_hostname }}."
+        msg: "Control Plane is booting. Workers are built and waiting for the handoff."

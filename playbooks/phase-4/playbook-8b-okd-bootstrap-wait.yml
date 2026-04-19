@@ -26,7 +26,7 @@
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
         block: |
           #---------------------------------------------------------------------
-          # OKD API (6443) - MASTERS ONLY (Bootstrap Commented)
+          # OKD API (6443) - MASTERS ONLY
           #---------------------------------------------------------------------
           frontend okd-api
               bind {{ lb_ip }}:6443
@@ -112,7 +112,10 @@
     - name: 📝 CSR - Automatically approve worker join requests
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
+        # Wrap Go-template in raw block to prevent Ansible conflicts
+        {% raw %}
         oc get csr -o go-template='{{range .items}}{{if not .status.certificate}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs -r oc adm certificate approve
+        {% endraw %}
       become: true
       register: csr_approval
       until: "node_status is defined and node_status.stdout.count('Ready') >= 6"
@@ -122,9 +125,8 @@
 
     - name: 🚀 VERIFY - Check Final Cluster Status
       ansible.builtin.command:
-        cmd: "oc get nodes"
-      environment:
-        KUBECONFIG: "{{ install_dir }}/auth/kubeconfig"
+        cmd: "oc get nodes --kubeconfig={{ install_dir }}/auth/kubeconfig"
+      become: true
       register: node_status
       until: "node_status.stdout.count('Ready') >= 6"
       retries: 20

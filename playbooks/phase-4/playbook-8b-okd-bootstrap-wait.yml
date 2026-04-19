@@ -5,6 +5,7 @@
   vars:
     install_dir: "/opt/okd-cluster"
     lb_ip: "192.168.199.60"
+    bootstrap_ip: "192.168.199.20"
     masters:
       - { name: "okd-master-01", ip: "192.168.199.21" }
       - { name: "okd-master-02", ip: "192.168.199.22" }
@@ -25,7 +26,7 @@
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
         block: |
           #---------------------------------------------------------------------
-          # OKD API (6443) - MASTERS ONLY
+          # OKD API (6443) - MASTERS ONLY (Bootstrap Commented)
           #---------------------------------------------------------------------
           frontend okd-api
               bind {{ lb_ip }}:6443
@@ -35,8 +36,9 @@
           backend okd-api-backend
               mode tcp
               balance roundrobin
+              # server okd-bootstrap {{ bootstrap_ip }}:6443 check
               {% for node in masters %}
-              server {{ node.name }} {{ node.ip }}:{{ api_port | default(6443) }} check
+              server {{ node.name }} {{ node.ip }}:6443 check
               {% endfor %}
 
           #---------------------------------------------------------------------
@@ -50,6 +52,7 @@
           backend okd-mcs-backend
               mode tcp
               balance roundrobin
+              # server okd-bootstrap {{ bootstrap_ip }}:22623 check
               {% for node in masters %}
               server {{ node.name }} {{ node.ip }}:22623 check
               {% endfor %}
@@ -106,10 +109,9 @@
       loop: ["nuc-1", "nuc-2", "nuc-3"]
       become: true
 
-    - name: 📝 CSR - Automatically approve ALL join requests (Continuous)
+    - name: 📝 CSR - Automatically approve worker join requests
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        # Approve everything that is Pending
         oc get csr -o go-template='{{range .items}}{{if not .status.certificate}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs -r oc adm certificate approve
       become: true
       register: csr_approval
@@ -130,4 +132,4 @@
 
     - name: 🔓 STATUS - 6-Node Fleet is Fully Operational
       ansible.builtin.debug:
-        msg: "Full Fleet Ready! Masters healthy, LB updated, Bootstrap deleted, and Workers joined."
+        msg: "Handoff complete. All 6 nodes are Ready. Bootstrap node decommissioned and HAProxy updated."

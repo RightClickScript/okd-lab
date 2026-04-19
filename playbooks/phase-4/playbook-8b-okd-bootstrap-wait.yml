@@ -106,15 +106,17 @@
       loop: ["nuc-1", "nuc-2", "nuc-3"]
       become: true
 
-    - name: 📝 CSR - Automatically approve worker join requests
+    - name: 📝 CSR - Automatically approve ALL join requests (Continuous)
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        oc get csr -o name | xargs -r oc adm certificate approve
+        # Approve everything that is Pending
+        oc get csr -o go-template='{{range .items}}{{if not .status.certificate}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs -r oc adm certificate approve
       become: true
       register: csr_approval
-      until: "csr_approval is success"
-      retries: 10
+      until: "node_status is defined and node_status.stdout.count('Ready') >= 6"
+      retries: 50
       delay: 30
+      ignore_errors: true
 
     - name: 🚀 VERIFY - Check Final Cluster Status
       ansible.builtin.command:

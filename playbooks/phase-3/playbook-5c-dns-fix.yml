@@ -86,6 +86,7 @@
       loop:
         - "api.okd"
         - "api-int.okd"
+        - "*.apps.okd"
 
     - name: 📂 OKD - Create Wildcard Apps Record
       ansible.windows.win_dns_record:

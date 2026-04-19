@@ -13,7 +13,6 @@ network:
         mii-monitor-interval: 100
   bridges:
     # br0: Management Network (VLAN 199 Untagged)
-    # Using a bridge instead of assigning IP to bond0 allows host-to-VM communication
     br0:
       interfaces: [bond0]
       addresses:
@@ -26,7 +25,8 @@ network:
         - to: default
           via: {{ network.mgmt_gateway }}
       nameservers:
-        addresses: [{{ network.primary_dns }}, 8.8.8.8]
+        # Hierarchical DNS: Windows DC (.10) first, then UniFi (.1)
+        addresses: [{{ network.primary_dns }}, {{ network.secondary_dns }}]
         search: {{ network.search_domains }}
       parameters:
         stp: no

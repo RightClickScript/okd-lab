@@ -1,80 +1,21 @@
 ---
-- name: Phase 3-1c - Fix DNS PTR & OKD Readiness
+- name: Phase 3.5c - Identity (Fix DNS & OKD Records)
   hosts: windows
   gather_facts: false
 
-  vars:
-    reverse_zone: "199.168.192.in-addr.arpa"
-    unifi_router: "192.168.1.1"
-
   tasks:
-    - name: 🌐 REVERSE - Create Reverse Lookup Zone (192.168.199.x)
-      ansible.windows.win_dns_zone:
-        name: "{{ reverse_zone }}"
-        replication: forest
-        type: primary
-        state: present
-
-    - name: 🔗 PTR - Add PTR record for AD Server (Identity-01)
-      ansible.windows.win_dns_record:
-        name: "10"
-        zone: "{{ reverse_zone }}"
-        type: "PTR"
-        value: "identity-01.{{ ad.domain_FQDN }}."
-        state: present
-
-    - name: 🔗 FORWARDERS - Idempotently set Forwarder to UniFi
-      ansible.windows.win_shell: |
-        $current = Get-DnsServerForwarder -ErrorAction SilentlyContinue
-        if ($current.IPAddress -notcontains "{{ unifi_router }}") {
-            Set-DnsServerForwarder -IPAddress "{{ unifi_router }}" -Force
-            Write-Output "Changed"
-        } else {
-            Write-Output "NoChange"
-        }
-      register: forwarder_res
-      changed_when: "'Changed' in forwarder_res.stdout"
-
-    - name: 🛠️ FIX - Set DNS Server to listen on IPv4 only
-      ansible.windows.win_shell: |
-        $DNSConfig = Get-DnsServerSetting -All
-        Set-DnsServerSetting -ListeningIPAddress 192.168.199.10
-      ignore_errors: true
-
-    - name: 📂 INFRA - Sync Physical Hardware to AD DNS
-      ansible.windows.win_dns_record:
-        name: "{{ item.name }}"
-        zone: "{{ ad.domain_FQDN }}"
-        type: "A"
-        value: "{{ item.ip }}"
-        state: present
-      loop:
-        - { name: "sms-1", ip: "192.168.199.4" }
-        - { name: "nuc-1", ip: "192.168.199.1" }
-        - { name: "nuc-2", ip: "192.168.199.2" }
-        - { name: "nuc-3", ip: "192.168.199.3" }
-        - { name: "lpt-1", ip: "192.168.199.5" }
-
-    - name: 📂 OKD - Create Static Node Records
-      ansible.windows.win_dns_record:
-        name: "{{ item.name }}"
-        zone: "{{ ad.domain_FQDN }}"
-        type: "A"
-        value: "{{ item.ip }}"
-        state: present
-      loop:
-        - { name: "okd-bootstrap", ip: "192.168.199.20" }
-        - { name: "okd-master-01", ip: "192.168.199.21" }
-        - { name: "okd-master-02", ip: "192.168.199.22" }
-        - { name: "okd-master-03", ip: "192.168.199.23" }
-
-    - name: 📂 OKD - Clean Old Multi-Record API Entries
+    - name: 🧹 CLEAN - Remove old/conflicting OKD records
       ansible.windows.win_dns_record:
         name: "{{ item }}"
         zone: "{{ ad.domain_FQDN }}"
         type: "A"
         state: absent
-      loop: ["api.okd", "api-int.okd"]
+      loop:
+        - "api.okd"
+        - "api-int.okd"
+        - "*.apps"
+        - "*.apps.okd"
+        - "console-openshift-console.apps.okd"
 
     - name: 📂 OKD - Create API Records (Point to Load Balancer)
       ansible.windows.win_dns_record:
@@ -88,19 +29,6 @@
         - "api-int.okd"
         - "*.apps.okd"
 
-    - name: 📂 OKD - Create Wildcard Apps Record
-      ansible.windows.win_dns_record:
-        name: "*.apps.okd"
-        zone: "{{ ad.domain_FQDN }}"
-        type: "A"
-        value: "192.168.199.21"
-        state: present
-
-    - name: 🔄 RESTART - Restart DNS Service
-      ansible.windows.win_service:
-        name: DNS
-        state: restarted
-
-    - name: 🔓 STATUS - DNS Fixed for Bootstrap
+    - name: 🔓 STATUS - Windows DNS Updated
       ansible.builtin.debug:
-        msg: "DNS records corrected. api-int.okd now points EXCLUSIVELY to bootstrap node (.20)."
+        msg: "DNS records for OKD now point exclusively to the Load Balancer IP ({{ network.okd_lb_ip }})."

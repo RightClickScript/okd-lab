@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-6 - Deploy OKD Load Balancer (Full Stack & Persistent)
+- name: Phase 3-6 - Deploy OKD Load Balancer (Deployment Mode)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -10,8 +10,9 @@
     mcs_port: 22623
     http_port: 80
     https_port: 443
+    # During deployment, the bootstrap node (.20) is the only source of truth
+    bootstrap_ip: "192.168.199.20"
     masters:
-      - { name: "okd-bootstrap", ip: "192.168.199.20" }
       - { name: "okd-master-01", ip: "192.168.199.21" }
       - { name: "okd-master-02", ip: "192.168.199.22" }
       - { name: "okd-master-03", ip: "192.168.199.23" }
@@ -21,13 +22,13 @@
       - { name: "okd-worker-03", ip: "192.168.199.33" }
 
   tasks:
-    - name: ⚙️ CONFIG - Generate haproxy.cfg (Master-Aware)
+    - name: ⚙️ CONFIG - Generate haproxy.cfg (Bootstrap Only for MCS)
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
         block: |
           #---------------------------------------------------------------------
-          # OKD API (6443)
+          # OKD API (6443) - Includes Bootstrap for initial install
           #---------------------------------------------------------------------
           frontend okd-api
               bind {{ lb_ip }}:{{ api_port }}
@@ -37,13 +38,15 @@
           backend okd-api-backend
               mode tcp
               balance roundrobin
+              server okd-bootstrap {{ bootstrap_ip }}:{{ api_port }} check
               {% for node in masters %}
               server {{ node.name }} {{ node.ip }}:{{ api_port }} check
               {% endfor %}
 
           #---------------------------------------------------------------------
-          # OKD Machine Config Server (22623)
-          # During bootstrap, this points to .20. Post-bootstrap, it MUST point to Masters.
+          # OKD Machine Config Server (22623) - BOOTSTRAP ONLY
+          # We ONLY use the bootstrap node here during the initial deployment
+          # to prevent Masters from trying to fetch config from each other.
           #---------------------------------------------------------------------
           frontend okd-mcs
               bind {{ lb_ip }}:{{ mcs_port }}
@@ -52,13 +55,10 @@
 
           backend okd-mcs-backend
               mode tcp
-              balance roundrobin
-              {% for node in masters %}
-              server {{ node.name }} {{ node.ip }}:{{ mcs_port }} check
-              {% endfor %}
+              server okd-bootstrap {{ bootstrap_ip }}:{{ mcs_port }} check
 
           #---------------------------------------------------------------------
-          # OKD Ingress (80/443)
+          # OKD Ingress (80/443) - Workers
           #---------------------------------------------------------------------
           frontend okd-http
               bind {{ lb_ip }}:{{ http_port }}

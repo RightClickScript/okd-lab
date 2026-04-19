@@ -13,9 +13,10 @@
       loop:
         - "api.okd"
         - "api-int.okd"
-        - "*.apps"
         - "*.apps.okd"
-        - "console-openshift-console.apps.okd"
+        - "okd-worker-01"
+        - "okd-worker-02"
+        - "okd-worker-03"
 
     - name: 📂 OKD - Create API Records (Point to Load Balancer)
       ansible.windows.win_dns_record:
@@ -29,6 +30,18 @@
         - "api-int.okd"
         - "*.apps.okd"
 
+    - name: 📂 OKD - Create Worker Records (Static IPs)
+      ansible.windows.win_dns_record:
+        name: "{{ item.name }}"
+        zone: "{{ ad.domain_FQDN }}"
+        type: "A"
+        value: "{{ item.ip }}"
+        state: present
+      loop:
+        - { name: "okd-worker-01", ip: "192.168.199.31" }
+        - { name: "okd-worker-02", ip: "192.168.199.32" }
+        - { name: "okd-worker-03", ip: "192.168.199.33" }
+
     - name: 🔓 STATUS - Windows DNS Updated
       ansible.builtin.debug:
-        msg: "DNS records for OKD now point exclusively to the Load Balancer IP ({{ network.okd_lb_ip }})."
+        msg: "Full Cluster DNS is now active. API points to .60 and Workers have unique records."

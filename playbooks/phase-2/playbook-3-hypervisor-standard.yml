@@ -143,6 +143,20 @@
         executable: /bin/bash
       changed_when: true
 
+    - name: 🔒 SECURITY - Disable AppArmor confinement for Libvirt
+      ansible.builtin.lineinfile:
+        path: /etc/libvirt/qemu.conf
+        regexp: '^#?security_driver ='
+        line: 'security_driver = "none"'
+        state: present
+      register: qemu_conf
+
+    - name: 🔄 SECURITY - Restart Libvirt to apply security changes
+      ansible.builtin.systemd:
+        name: libvirtd
+        state: restarted
+      when: qemu_conf.changed
+
     - name: 🔓 STATUS - Hypervisor Standardization Complete
       ansible.builtin.debug:
         msg: "Host {{ inventory_hostname }} is standardized with ZFS storage and KVM networking."

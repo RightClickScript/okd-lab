@@ -1,5 +1,5 @@
 ---
-- name: Phase 3-6 - Deploy OKD Load Balancer (Install-Ready & TSO Hardened)
+- name: Phase 3-6 - Deploy OKD Load Balancer (Full Stack & Validated)
   hosts: local_spark
   become: true
   gather_facts: false
@@ -21,27 +21,13 @@
       - { name: "okd-worker-03", ip: "192.168.199.33" }
 
   tasks:
-    - name: 🏗️ TSO - Update hardening script (Add GSO/GRO off)
-      ansible.builtin.copy:
-        dest: /usr/local/bin/disable-tso.sh
-        mode: '0755'
-        content: |
-          #!/bin/bash
-          for iface in $(ls /sys/class/net); do
-              if [[ "$iface" == "lo" ]] || [[ ! -e "/sys/class/net/$iface/device" ]]; then
-                  continue
-              fi
-              echo "Hardening $iface: Disabling TSO, GSO, GRO"
-              ethtool -K "$iface" tso off gso off gro off rxvlan off txvlan off 2>/dev/null || true
-          done
-
-    - name: ⚙️ CONFIG - Generate haproxy.cfg (Bootstrap-Priority)
+    - name: ⚙️ CONFIG - Generate Clean haproxy.cfg
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         marker: "# {mark} OKD LOAD BALANCER CONFIG"
         block: |
           #---------------------------------------------------------------------
-          # OKD API (6443) - Mixed (Bootstrap + Masters)
+          # OKD API (6443)
           #---------------------------------------------------------------------
           frontend okd-api
               bind {{ lb_ip }}:{{ api_port }}
@@ -57,8 +43,7 @@
               {% endfor %}
 
           #---------------------------------------------------------------------
-          # OKD Machine Config Server (22623) - BOOTSTRAP ONLY
-          # This is critical for the initial install!
+          # OKD Machine Config Server (22623)
           #---------------------------------------------------------------------
           frontend okd-mcs
               bind {{ lb_ip }}:{{ mcs_port }}
@@ -70,21 +55,37 @@
               server okd-bootstrap {{ bootstrap_ip }}:{{ mcs_port }} check
 
           #---------------------------------------------------------------------
-          # OKD Ingress (80/443) - Workers
+          # OKD HTTP Ingress (80)
           #---------------------------------------------------------------------
+          frontend okd-http
+              bind {{ lb_ip }}:{{ http_port }}
+              mode tcp
+              default_backend okd-http-backend
+
           backend okd-http-backend
               mode tcp
+              balance roundrobin
               {% for node in workers %}
               server {{ node.name }} {{ node.ip }}:{{ http_port }} check
               {% endfor %}
 
+          #---------------------------------------------------------------------
+          # OKD HTTPS Ingress (443)
+          #---------------------------------------------------------------------
+          frontend okd-https
+              bind {{ lb_ip }}:{{ https_port }}
+              mode tcp
+              default_backend okd-https-backend
+
           backend okd-https-backend
               mode tcp
+              balance roundrobin
               {% for node in workers %}
               server {{ node.name }} {{ node.ip }}:{{ https_port }} check
               {% endfor %}
 
-    - name: 🔄 RESTART - Apply Configuration
+    - name: 🔄 RESTART - Apply Clean Configuration
       ansible.builtin.systemd:
         name: haproxy
         state: restarted
+        enabled: true

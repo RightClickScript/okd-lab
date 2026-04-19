@@ -18,6 +18,10 @@ network:
       interfaces: [bond0]
       addresses:
         - {{ ansible_host }}/24
+        {% if inventory_hostname == 'lpt-1' %}
+        - {{ network.okd_lb_ip }}/24
+        - {{ network.netboot_ip }}/24
+        {% endif %}
       routes:
         - to: default
           via: {{ network.mgmt_gateway }}

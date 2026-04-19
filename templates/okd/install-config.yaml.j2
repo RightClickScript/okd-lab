@@ -3,7 +3,7 @@ baseDomain: {{ ad.domain_FQDN }}
 compute:
 - hyperthreading: Enabled
   name: worker
-  replicas: 0 # We will add bare-metal workers manually later
+  replicas: 3
 controlPlane:
   hyperthreading: Enabled
   name: master

@@ -1,0 +1,76 @@
+---
+- name: Phase 0.5 - OKD Graceful Cluster Shutdown
+  hosts: local_spark
+  become: true
+  gather_facts: false
+
+  vars:
+    install_dir: "/opt/okd-cluster"
+    kubeconfig: "/opt/okd-cluster/auth/kubeconfig"
+
+  tasks:
+    - name: 🔐 BACKUP - Take ETCD Snapshot (Pre-Shutdown Safety)
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        oc debug node/okd-master-01.homelab.local -- chroot /host /usr/local/bin/cluster-backup.sh /home/core/assets/backup
+      ignore_errors: true
+
+    - name: 🚧 CORDON - Mark all nodes as unschedulable
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do
+          oc adm cordon ${node}
+        done
+      changed_when: true
+
+    - name: 🧹 DRAIN - Evacuate pods from Worker nodes
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        for node in $(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}'); do
+          oc adm drain ${node} --delete-emptydir-data --ignore-daemonsets=true --timeout=30s --force
+        done
+      changed_when: true
+      ignore_errors: true
+
+    - name: 💤 SHUTDOWN - Signal VM OS Shutdown (Delayed 1m)
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        # Shut down workers first
+        for node in $(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}'); do
+          oc debug node/${node} -- chroot /host shutdown -h 1 &
+        done
+        sleep 10
+        # Shut down masters last
+        for node in $(oc get nodes -l node-role.kubernetes.io/master -o jsonpath='{.items[*].metadata.name}'); do
+          oc debug node/${node} -- chroot /host shutdown -h 1 &
+        done
+      changed_when: true
+
+- name: Phase 0.5b - Hypervisor Verification & Force Kill
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  tasks:
+    - name: ⏳ WAIT - Allow 10 minutes for graceful VM stop
+      ansible.builtin.wait_for:
+        timeout: 600
+      delegate_to: localhost
+
+    - name: 🗡️ FORCE - Kill any lingering OKD VMs
+      ansible.builtin.shell: |
+        for vm in $(virsh list --name | grep 'okd-'); do
+          if [ -n "$vm" ]; then
+            echo "Graceful stop failed. Force-killing $vm..."
+            virsh destroy "$vm" || true
+          fi
+        done
+      changed_when: true
+
+- name: Phase 0.5c - Physical Host Shutdown
+  hosts: physical
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 🛑 POWER OFF - Shut down NUCs and SMS-1
+      community.general.shutdown:
+      when: type in ['nuc', 'sms']

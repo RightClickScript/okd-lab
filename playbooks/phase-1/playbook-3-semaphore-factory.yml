@@ -11,7 +11,7 @@
     semaphore_url: "http://192.168.199.50"
 
     templates:
-      - { name: "Phase 0: Lab Control (Shutdown)", playbook: "playbooks/phase-0/playbook-lab-power.yml", arguments: "--tags power_off" }
+      - { name: "Phase 0: Lab Control (Shutdown Graceful)", playbook: "playbooks/phase-0/playbook-lab-shutdown-graceful.yml" }
       - { name: "Phase 0: Lab Control (Startup)", playbook: "playbooks/phase-0/playbook-lab-power.yml", arguments: "--tags power_on" }
       - { name: "Phase 0: Lab Connectivity Validation", playbook: "playbooks/phase-0/playbook-lab-validate.yml" }
       - { name: "Phase 0: Standardize Lab Networking", playbook: "playbooks/phase-0/playbook-network-standard.yml" }

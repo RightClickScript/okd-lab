@@ -1,0 +1,67 @@
+---
+- name: Phase 3-5d - Morpheus AD Integration
+  hosts: local_spark
+  gather_facts: false
+
+  vars:
+    morpheus_url: "https://192.168.199.11"
+    morpheus_user: "admin"
+    morpheus_pass: "Admin@12345"
+
+  tasks:
+    - name: 🔑 AUTH - Get Morpheus API Token
+      ansible.builtin.uri:
+        url: "{{ morpheus_url }}/oauth/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "{{ morpheus_user }}"
+          password: "{{ morpheus_pass }}"
+          grant_type: "password"
+          client_id: "morph-api"
+          scope: "write"
+        validate_certs: false
+      register: auth_response
+
+    - name: 🔍 CHECK - See if Identity Source already exists
+      ansible.builtin.uri:
+        url: "{{ morpheus_url }}/api/user-sources"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ auth_response.json.access_token }}"
+        validate_certs: false
+      register: existing_sources
+
+    - name: 📁 IDENTITY - Create AD Identity Source (LDAP)
+      ansible.builtin.uri:
+        url: "{{ morpheus_url }}/api/user-sources"
+        method: POST
+        body_format: json
+        headers:
+          Authorization: "Bearer {{ auth_response.json.access_token }}"
+        body:
+          userSource:
+            name: "Homelab AD"
+            type: "ldap"
+            description: "Homelab Active Directory"
+            config:
+              url: "ldap://192.168.199.10"
+              bindingUsername: "morpheus_adm@homelab.local"
+              bindingPassword: "Admin@12345"
+              userSearchBase: "OU=Lab,DC=homelab,DC=local"
+              userFqnExpression: "sAMAccountName=${username}"
+              requiredGroup: "LabUsers"
+            roleMapping:
+              defaultRole:
+                id: 3 # User Admin
+              mappedRoles:
+                - groupName: "LabAdmins"
+                  role:
+                    id: 1 # System Admin
+        validate_certs: false
+        status_code: [200, 201]
+      when: existing_sources.json.userSources | selectattr('name', 'equalto', 'Homelab AD') | list | length == 0
+
+    - name: 🔓 STATUS - Morpheus AD Configured
+      ansible.builtin.debug:
+        msg: "Morpheus is now integrated with Active Directory. LabAdmins can log in."

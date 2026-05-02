@@ -71,6 +71,139 @@ graph TD
 | **Ansible AWX UI** | [http://192.168.199.5:30005](http://192.168.199.5:30005) | `admin` / `Admin@12345` |
 | **HashiCorp Vault** | [http://192.168.199.5:30002](http://192.168.199.5:30002) | (Requires Unseal Keys) |
 
+## 🎡 OKD Cluster Access
+
+Once the OKD deployment is complete, use these commands on **lpt-1** to retrieve your credentials:
+
+### 1. Get the Web Console URL
+```bash
+export KUBECONFIG=/opt/okd-cluster/auth/kubeconfig
+oc get route -n openshift-console console -o jsonpath='{.spec.host}'
+```
+
+### 2. Get the Admin Credentials
+- **Username:** `kubeadmin`
+- **Password:**
+  ```bash
+  sudo cat /opt/okd-cluster/auth/kubeadmin-password
+  ```
+
+## 🏗️ OKD Virtualization & Storage (Post-Install)
+
+After deploying the KubeVirt HyperConverged Operator, follow these steps to enable local storage on NUC Workers:
+
+### 1. Prepare Worker Node Storage (SELinux)
+Run these commands on **lpt-1** for each worker node to allow HostPath writes:
+```bash
+oc debug node/okd-worker-01.homelab.local -- chroot /host /bin/bash -c "mkdir -p /var/hpvolumes && chcon -R -t container_file_t /var/hpvolumes"
+oc debug node/okd-worker-02.homelab.local -- chroot /host /bin/bash -c "mkdir -p /var/hpvolumes && chcon -R -t container_file_t /var/hpvolumes"
+oc debug node/okd-worker-03.homelab.local -- chroot /host /bin/bash -c "mkdir -p /var/hpvolumes && chcon -R -t container_file_t /var/hpvolumes"
+```
+
+### 2. Configure HostPath Provisioner (HPP)
+Create the `HostPathProvisioner` resource in the `kubevirt-hyperconverged` namespace:
+```yaml
+apiVersion: hostpathprovisioner.kubevirt.io/v1beta1
+kind: HostPathProvisioner
+metadata:
+  name: hostpath-provisioner
+spec:
+  imagePullPolicy: IfNotPresent
+  pathConfig:
+    path: "/var/hpvolumes"
+    useNamingPrefix: false
+  workload:
+    nodeSelector:
+      node-role.kubernetes.io/worker: ""
+```
+
+### 3. Create StorageClass
+Create the `hostpath-virt` StorageClass and set it as default:
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hostpath-virt
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: kubevirt.io.hostpath-provisioner
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+```
+
+### 4. Configure Virtual Networking (NMState)
+
+This connects internal VMs to your physical network (`192.168.199.x`) using a secondary bridge called `br-ext`.
+
+#### A. Install NMState Operator (from lpt-1)
+```bash
+oc apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.86.0/nmstate.io_nmstates.yaml
+oc apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.86.0/namespace.yaml
+oc apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.86.0/service_account.yaml
+oc apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.86.0/role.yaml
+oc apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.86.0/role_binding.yaml
+oc apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.86.0/operator.yaml
+
+# Trigger the engine
+cat <<EOF | oc create -f -
+apiVersion: nmstate.io/v1
+kind: NMState
+metadata:
+  name: nmstate
+EOF
+```
+
+#### B. Create the External Bridge (br-ext)
+```bash
+cat <<EOF | oc apply -f -
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: br-ext-nucs
+spec:
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  desiredState:
+    interfaces:
+      - name: br-ext
+        type: linux-bridge
+        state: up
+        bridge:
+          options:
+            stp:
+              enabled: false
+          port:
+            - name: enp1s0
+EOF
+```
+
+#### C. Restore Static IPs (Manual Recovery)
+When the bridge is created, the Workers will drop to DHCP. Log into each **Worker Console** via Cockpit and run:
+```bash
+# Replace .XX with .31, .32, or .33
+sudo nmcli connection modify br-ext ipv4.addresses 192.168.199.XX/24 ipv4.gateway 192.168.199.254 ipv4.dns "192.168.199.10 192.168.1.1" ipv4.method manual && sudo nmcli connection up br-ext
+```
+
+#### D. Create the "Plug" (NAD)
+Create this in the `default` namespace (or wherever your VMs live):
+```bash
+cat <<EOF | oc apply -f -
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: bridge-conf
+  namespace: default
+spec:
+  config: '{
+      "cniVersion": "0.3.1",
+      "name": "bridge-conf",
+      "type": "bridge",
+      "bridge": "br-ext",
+      "ipam": {}
+    }'
+EOF
+```
+
 ## 🛠️ Rebuild & Initialization Workflow
 
 ### 1. Day-0 Physical Install

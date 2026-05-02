@@ -33,6 +33,13 @@ all:
       BootDiskSize: 40
       iso_url: "http://192.168.199.5:8080/iso/windows-server.iso"
 
+    morpheusdetails:
+      name: "morpheus-01"
+      IPAddress: "192.168.199.11"
+      Memory: 16384
+      CPU: 4
+      BootDiskSize: 100
+
     # OKD 4.19 & SCOS Artifacts
     artifacts:
       git_repo_url: "https://github.com/RightClickScript/okd-lab.git"
@@ -83,11 +90,19 @@ all:
       type: "nuc"
     identity-01:
       ansible_host: 192.168.199.10
+    morpheus-01:
+      ansible_host: 192.168.199.11
 
   children:
     local_spark:
       hosts:
         lpt-1:
+    management_plane:
+      hosts:
+        sms-1:
+    morpheus:
+      hosts:
+        morpheus-01:
     physical:
       hosts:
         sms-1:

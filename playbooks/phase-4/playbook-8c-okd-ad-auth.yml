@@ -6,28 +6,23 @@
 
   vars:
     dc_ip: "192.168.199.10"
-    lb_ip: "192.168.199.60"
     domain: "homelab.local"
-    bind_dn: "CN=Administrator,CN=Users,DC=homelab,DC=local"
+    bind_dn: "CN=okd_admin,OU=Lab,DC=homelab,DC=local"
     bind_password: "Admin@12345"
-    user_search_base: "CN=Users,DC=homelab,DC=local"
-    kubeconfig: "/home/bishop/.kube/config"
+    user_search_base: "OU=Lab,DC=homelab,DC=local"
+    kubeconfig: "/opt/okd-cluster/auth/kubeconfig"
 
   tasks:
-    - name: 🌐 DNS - Force API Resolution to Load Balancer
-      ansible.builtin.lineinfile:
-        path: /etc/hosts
-        line: "{{ lb_ip }} api.okd.homelab.local api-int.okd.homelab.local"
-        state: present
-
     - name: 🔐 SECRET - Create LDAP Bind Password Secret
       ansible.builtin.shell: |
-        oc create secret generic ldap-secret --from-literal=bindPassword={{ bind_password }} -n openshift-config --kubeconfig={{ kubeconfig }} --dry-run=client -o yaml | oc --insecure-skip-tls-verify apply -f - --kubeconfig={{ kubeconfig }}
+        export KUBECONFIG={{ kubeconfig }}
+        oc create secret generic ldap-secret --from-literal=bindPassword={{ bind_password }} -n openshift-config --dry-run=client -o yaml | oc apply -f -
       changed_when: true
 
     - name: ⚙️ CONFIG - Apply LDAP Identity Provider
       ansible.builtin.shell: |
-        cat <<EOF | oc --insecure-skip-tls-verify apply -f - --kubeconfig={{ kubeconfig }}
+        export KUBECONFIG={{ kubeconfig }}
+        cat <<EOF | oc apply -f -
         apiVersion: config.openshift.io/v1
         kind: OAuth
         metadata:
@@ -49,16 +44,17 @@
               ca:
                 name: "" 
               insecure: true
-              url: "ldap://{{ dc_ip }}:389/{{ user_search_base }}?sAMAccountName"
+              url: "ldap://{{ dc_ip }}:389/{{ user_search_base }}?sAMAccountName?sub"
         EOF
       changed_when: true
 
-    - name: 👑 RBAC - Grant Cluster Admin to AD Admin
+    - name: 👑 RBAC - Grant Cluster Admin to AD Admins
       ansible.builtin.shell: |
-        oc --insecure-skip-tls-verify adm policy add-cluster-role-to-user cluster-admin okd_admin --kubeconfig={{ kubeconfig }}
-      ignore_errors: true
+        export KUBECONFIG={{ kubeconfig }}
+        oc adm policy add-cluster-role-to-user cluster-admin okd_admin || true
+        oc adm policy add-cluster-role-to-user cluster-admin Administrator || true
       changed_when: true
 
     - name: 🔓 STATUS - AD Integration Applied
       ansible.builtin.debug:
-        msg: "LDAP Integration applied. Semaphore forced to use .60 for API."
+        msg: "LDAP Integration applied."

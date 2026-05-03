@@ -84,5 +84,9 @@ During the deployment of OpenShift Virtualization and OKD network configuration,
 *   **The Problem:** Immediately after bootstrap, `oc get clusteroperators` shows critical operators (Console, Auth, Monitoring) as Degraded.
 *   **The Solution:** This is normal post-bootstrap behavior. The `kube-apiserver` is rolling out new revisions (e.g., from rev 8 to 9). Wait for all `installer` pods to complete and `guard` pods to stabilize in the `openshift-kube-apiserver` namespace before assuming failure.
 
+### 8. Active Directory LDAP Path Alignment
+*   **The Problem:** OKD AD Auth integration failed with "Invalid Credentials" because it was trying to bind to the default `CN=Users` folder using the root `Administrator` account, which did not align with our provisioned Lab OU architecture. Furthermore, the LDAP URL lacked the `?sub` suffix, preventing recursive searches for users.
+*   **The Solution:** Updated the `OAuth` configuration to bind securely using our dedicated service account (`CN=okd_admin,OU=Lab,DC=homelab,DC=local`) and search the correct base (`OU=Lab,DC=homelab,DC=local`). Added the `?sub` flag to the URL to enable nested searching, and granted `cluster-admin` RBAC rights directly to the `okd_admin` user.
+
 ---
 *This document tracks the evolving state and the architectural decisions required to stabilize the nested virtualization environment.*

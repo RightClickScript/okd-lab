@@ -278,7 +278,8 @@
           --disk path={{ vm_root }}/{{ item.name }}.qcow2,bus=virtio \
           --memballoon model=virtio \
           --import \
-          --network bridge=br0,model=virtio \
+          --network bridge=br0,model=virtio,trustGuestRxFilters=yes \
+          --network bridge=br0,model=virtio,trustGuestRxFilters=yes \
           --graphics vnc,listen=0.0.0.0 \
           --noautoconsole \
           --wait 0 \

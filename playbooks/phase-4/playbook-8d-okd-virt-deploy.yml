@@ -155,46 +155,31 @@
       delay: 10
       changed_when: false
 
-    - name: 🌐 NETWORKING - Create Worker Bridges (Idempotent & Static IPs)
+    - name: 🌐 NETWORKING - Create External Bridge (br-ext) via enp2s0
       ansible.builtin.shell: |
         export KUBECONFIG={{ kubeconfig }}
         cat <<EOF | oc apply -f -
         apiVersion: nmstate.io/v1
         kind: NodeNetworkConfigurationPolicy
         metadata:
-          name: br-ext-{{ item.name }}
+          name: br-ext-all-nodes
         spec:
-          nodeSelector:
-            kubernetes.io/hostname: {{ item.name }}.homelab.local
           desiredState:
             interfaces:
               - name: br-ext
                 type: linux-bridge
                 state: up
                 ipv4:
-                  enabled: true
-                  dhcp: false
-                  address:
-                    - ip: {{ item.ip }}
-                      prefix-length: 24
+                  enabled: false
+                ipv6:
+                  enabled: false
                 bridge:
                   options:
                     stp:
                       enabled: false
                   port:
-                    - name: enp1s0
-            routes:
-              config:
-                - destination: 0.0.0.0/0
-                  next-hop-address: {{ network.mgmt_gateway }}
-                  next-hop-interface: br-ext
-            dns-resolver:
-              config:
-                server:
-                  - {{ network.primary_dns }}
-                  - {{ network.secondary_dns }}
+                    - name: enp2s0
         EOF
-      loop: "{{ okd_vms.workers }}"
       register: nncp_apply
       changed_when: "'created' in nncp_apply.stdout or 'configured' in nncp_apply.stdout"
 

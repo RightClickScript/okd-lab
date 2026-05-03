@@ -19,42 +19,70 @@ Morpheus Enterprise Datacenter Lab: A fully automated, immutable homelab.
 ### ⚡ Compute Plane (NUC 1-3) - The "Workload"
 *   **Role:** Bare-metal OKD Workers (Intel NUCs).
 *   **IPs:** `192.168.199.1-3`.
-*   **OS:** Fedora CoreOS (FCOS).
+*   **OS:** CentOS Stream CoreOS (SCOS).
 
 ---
 
-## 🎯 The Consolidated Bootstrapping Sequence
+## 🎯 Bootstrapping Sequence Status
 
-### Phase 1: The Local Spark (Container Host Laptop)
-- [x] `playbook-1-host-prep.yml`: Kernel modules (`br_netfilter`, `overlay`), Sysctl tweaks, and K3s installation.
-- [x] `playbook-2-infrastructure-core.yml`: MetalLB v0.14.9 deployment & Traefik Ingress on VIP `192.168.199.50`.
-- [x] `playbook-3-semaphore-factory.yml`: Semaphore UI deployment with RBAC Cluster-Admin and Idempotent API Seeding.
-- [ ] `playbook-4-vault-deploy.yml`: Deploy HashiCorp Vault (Launched from Semaphore).
-- [ ] `playbook-5-awx-deploy.yml`: Deploy Ansible AWX (Launched from Semaphore).
+### Phase 1: The Local Spark (Container Host Laptop) - [COMPLETED]
+- [x] K3s Installation & Sysctl tweaks.
+- [x] MetalLB v0.14.9 & Traefik Ingress.
+- [x] Semaphore UI deployment.
+- [x] HashiCorp Vault deployment.
+- [x] Ansible AWX deployment.
 
-### Phase 2: The Hypervisor Foundation (SMS-1 & NUCs)
-- [ ] `playbook-3-amd-prep-part1.yml`: Sanitization & Networking on SMS-1 (via Semaphore).
-- [ ] `playbook-3-amd-prep-part2.yml`: KVM/libvirt & Storage on SMS-1 (via Semaphore).
-- [ ] `playbook-4-nuc-prep.yml`: Wake-on-LAN & FCOS Ignition web server (via Semaphore).
+### Phase 2: The Hypervisor Foundation - [COMPLETED]
+- [x] SMS-1 & NUCs Bare-metal Prep (KVM, ZFS, Libvirt).
+- [x] Ignition server & configurations.
 
-### Phase 3: The Enterprise Core (Deployed to SMS-1 KVM)
-- [ ] `playbook-5-identity.yml`: Provision the Windows Server AD/DNS VM.
-- [ ] `playbook-7-morpheus.yml`: Provision the Morpheus Appliance VM.
+### Phase 3: The Enterprise Core - [COMPLETED]
+- [x] Windows Server AD/DNS VM Provisioned.
+- [x] Morpheus Appliance VM Provisioned.
+- [x] HAProxy Load Balancer Configured (`192.168.199.60`).
 
-### Phase 4: The Kubernetes Compute Plane
-- [ ] `playbook-8-okd-masters.yml`: OKD Control Plane VMs on SMS-1.
-- [ ] `playbook-9-okd-workers.yml`: OKD Bare-metal Workers on NUCs.
+### Phase 4: The Kubernetes Compute Plane - [IN PROGRESS]
+- [x] OKD Control Plane (Masters) on SMS-1.
+- [x] OKD Workers on NUCs.
+- [x] Cluster Bootstrapping & DNS Wildcard resolution (`*.apps.okd.homelab.local`).
+- [x] Active Directory Auth Integration.
+- [🔄] **Phase 4.4: OpenShift Virtualization (KubeVirt) & Storage (Currently Refining)**.
 
 ---
 
-## 📜 Architectural Rules & Networking Truths
-*   **MetalLB Version:** Use **v0.14.9** ONLY. v0.15.x has known ARP/Routing issues on this hardware.
-*   **K3s Networking:** Traefik and ServiceLB must be disabled in `k3s.service` flags to allow Helm-controlled ingress.
-*   **Ingress Routing:** Access all factory services via `192.168.199.50` with the following hostnames:
-    *   `semaphore.homelab.local`
-    *   `dist.homelab.local`
-    *   `vault.homelab.local` (Pending)
-    *   `awx.homelab.local` (Pending)
-*   **RBAC Policy:** The Semaphore ServiceAccount has `cluster-admin` rights. Playbooks run from the UI do NOT need external Kubeconfigs.
-*   **The "No SSH" Rule:** All configuration beyond the initial `bootstrap.sh` must be executed via Ansible/Semaphore.
-*   **Idempotency:** Playbook 3 (Seeding) is the standard for idempotency: it cleans duplicates and only adds missing resources via the API.
+## 🚀 Key Discoveries & Hardened Fixes (Lessons Learned)
+
+During the deployment of OpenShift Virtualization and OKD network configuration, we encountered several complex issues that fundamentally changed our architectural approach.
+
+### 1. The Dual-NIC Architectural Shift (The Ultimate Fix)
+*   **The Problem:** Applying NMState policies (`NodeNetworkConfigurationPolicy`) to create a bridge on a single-NIC node (`enp1s0`) caused the node to temporarily drop its static IP and fall back to DHCP. This broke HAProxy routing and caused NMState's own probes to panic and rollback the configuration.
+*   **The Solution:** We upgraded the entire cluster to an **Enterprise Dual-NIC Architecture**. Every OKD VM is now deployed via `virt-install` with two network interfaces:
+    *   `enp1s0` (Management): Handles cluster API traffic and retains the static IP.
+    *   `enp2s0` (Virtualization): Exclusively used by NMState to form the external bridge. No IP address is assigned to it, making it a pure Layer 2 switch for guest VMs.
+
+### 2. Nested Virtualization & MAC Spoofing
+*   **The Problem:** Guest VMs (like Fedora) inside the OKD cluster could not obtain DHCP addresses from the physical UniFi router. The Libvirt hypervisor on the physical NUCs detected the guest VM's MAC address coming out of the SCOS worker VM's interface and dropped the packets as "MAC Spoofing."
+*   **The Solution:** Added `trustGuestRxFilters=yes` to the `virt-install` network definitions for all OKD VMs. This puts the virtual interfaces into promiscuous mode, allowing nested VM traffic to flow out to the physical network.
+
+### 3. KubeVirt Operator InstallModes
+*   **The Problem:** The KubeVirt Operator (`community-kubevirt-hyperconverged`) failed to install via OLM with the error `OwnNamespace InstallModeType not supported`.
+*   **The Solution:** The KubeVirt operator requires cluster-wide privileges. We removed the `targetNamespaces` array from the `OperatorGroup` YAML, which defaults the group to `AllNamespaces` mode, allowing the operator to deploy successfully.
+
+### 4. Bridge Identity Crisis (`br-ex` vs `br-ext`)
+*   **The Problem:** OKD's internal OVN-Kubernetes CNI reserves a bridge named `br-ex` as an Open vSwitch (OVS) interface. Creating a standard Linux bridge named `br-ex` via NMState caused CNI conflicts and prevented the `virt-launcher` pods from starting.
+*   **The Solution:** Renamed our external Linux bridge to `br-ext` to safely sidestep internal OVN naming conventions.
+
+### 5. HAProxy Health Check Failures (`<NOSRV>`)
+*   **The Problem:** Operators like `console` and `authentication` were reporting `EOF` errors. HAProxy logs showed backend workers as `DOWN` with Layer 4 timeouts, despite the nodes being online.
+*   **The Solution:** OKD ingress routers use specific TLS handshakes. Using standard `check` on port 443 in HAProxy caused verification failures. We updated the HAProxy backend configuration to use basic TCP port checks (`check port 443` and `check port 80`) without enforcing SSL verification.
+
+### 6. HAProxy WebSocket Timeouts (Console Flashing)
+*   **The Problem:** The OKD Web Console VNC viewer for VMs would constantly disconnect and "flash" every 50 seconds.
+*   **The Solution:** Added `timeout tunnel 3600s` to the `defaults` section of HAProxy to allow long-lived WebSocket connections for VM consoles.
+
+### 7. Post-Deployment API Rollout Panic
+*   **The Problem:** Immediately after bootstrap, `oc get clusteroperators` shows critical operators (Console, Auth, Monitoring) as Degraded.
+*   **The Solution:** This is normal post-bootstrap behavior. The `kube-apiserver` is rolling out new revisions (e.g., from rev 8 to 9). Wait for all `installer` pods to complete and `guard` pods to stabilize in the `openshift-kube-apiserver` namespace before assuming failure.
+
+---
+*This document tracks the evolving state and the architectural decisions required to stabilize the nested virtualization environment.*

@@ -69,9 +69,9 @@
           backend okd-http-backend
               mode tcp
               balance roundrobin
-              server okd-worker-01 192.168.199.31:80 check
-              server okd-worker-02 192.168.199.32:80 check
-              server okd-worker-03 192.168.199.33:80 check
+              server okd-worker-01 192.168.199.31:80 check port 80
+              server okd-worker-02 192.168.199.32:80 check port 80
+              server okd-worker-03 192.168.199.33:80 check port 80
 
           frontend okd-https
               bind {{ lb_ip }}:443
@@ -81,9 +81,9 @@
           backend okd-https-backend
               mode tcp
               balance roundrobin
-              server okd-worker-01 192.168.199.31:443 check
-              server okd-worker-02 192.168.199.32:443 check
-              server okd-worker-03 192.168.199.33:443 check
+              server okd-worker-01 192.168.199.31:443 check port 443
+              server okd-worker-02 192.168.199.32:443 check port 443
+              server okd-worker-03 192.168.199.33:443 check port 443
       become: true
       register: lb_handoff
 

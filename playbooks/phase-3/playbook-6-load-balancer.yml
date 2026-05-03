@@ -22,6 +22,13 @@
       - { name: "okd-worker-03", ip: "192.168.199.33" }
 
   tasks:
+    - name: ⚙️ CONFIG - Add WebSocket Timeout Tunnel
+      ansible.builtin.lineinfile:
+        path: /etc/haproxy/haproxy.cfg
+        insertafter: '^(\s*)timeout server.*'
+        line: '        timeout tunnel  3600s'
+        state: present
+
     - name: ⚙️ CONFIG - Generate haproxy.cfg (Bootstrap Only for MCS)
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
@@ -69,7 +76,7 @@
               mode tcp
               balance roundrobin
               {% for node in workers %}
-              server {{ node.name }} {{ node.ip }}:{{ http_port }} check
+              server {{ node.name }} {{ node.ip }}:{{ http_port }} check port {{ http_port }}
               {% endfor %}
 
           frontend okd-https
@@ -81,7 +88,7 @@
               mode tcp
               balance roundrobin
               {% for node in workers %}
-              server {{ node.name }} {{ node.ip }}:{{ https_port }} check
+              server {{ node.name }} {{ node.ip }}:{{ https_port }} check port {{ https_port }}
               {% endfor %}
 
     - name: 🔄 RESTART - Apply Configuration

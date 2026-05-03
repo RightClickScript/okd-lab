@@ -148,7 +148,7 @@
       ansible.builtin.shell: |
         export KUBECONFIG={{ kubeconfig }}
         # We want to make sure at least one handler is running
-        oc get pods -n kubernetes-nmstate | grep nmstate-handler | grep -i Running
+        oc get pods -n nmstate | grep nmstate-handler | grep -i Running
       register: nmstate_ready
       until: nmstate_ready.rc == 0
       retries: 30

@@ -135,21 +135,18 @@
     - name: ⏳ WAIT - Post-Deployment API Server Rollout Stabilization
       ansible.builtin.shell: |
         export KUBECONFIG={{ install_dir }}/auth/kubeconfig
-        # Check if the kube-apiserver cluster operator has finished progressing and is available
-        PROGRESSING=$(oc get clusteroperator kube-apiserver -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}')
-        AVAILABLE=$(oc get clusteroperator kube-apiserver -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')
-        
-        if [ "$PROGRESSING" == "False" ] && [ "$AVAILABLE" == "True" ]; then
-          echo "Stabilized"
-          exit 0
-        else
-          echo "Rolling out (Progressing: $PROGRESSING, Available: $AVAILABLE)"
-          exit 1
-        fi
+        # We use oc wait with a short timeout to safely poll the status, 
+        # allowing the Ansible until-loop to handle connection drops during restarts.
+        oc wait clusteroperator/kube-apiserver --for=condition=Available=True --timeout=5s
+        oc wait clusteroperator/kube-apiserver --for=condition=Progressing=False --timeout=5s
+        oc wait clusteroperator/authentication --for=condition=Available=True --timeout=5s
+        oc wait clusteroperator/authentication --for=condition=Progressing=False --timeout=5s
+        oc wait clusteroperator/console --for=condition=Available=True --timeout=5s
+        oc wait clusteroperator/console --for=condition=Progressing=False --timeout=5s
       become: true
       register: api_rollout
       until: api_rollout.rc == 0
-      retries: 60
+      retries: 120
       delay: 30
       changed_when: false
 

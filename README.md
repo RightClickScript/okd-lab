@@ -88,6 +88,62 @@ oc get route -n openshift-console console -o jsonpath='{.spec.host}'
   sudo cat /opt/okd-cluster/auth/kubeadmin-password
   ```
 
+## 🛠️ Monitoring & Troubleshooting
+
+Use these commands on **lpt-1** to track deployment progress and resolve common issues:
+
+### 1. Watch Node Status
+Monitor when nodes join the cluster and reach "Ready" status:
+```bash
+export KUBECONFIG=/opt/okd-cluster/auth/kubeconfig
+watch -n 5 "oc get nodes"
+```
+
+### 2. Check and Approve Certificates (CSRs)
+If nodes are stuck in `Pending` or `NotReady`, they likely need certificate approval:
+```bash
+# List pending requests
+oc get csr
+# Approve all pending requests
+oc get csr -o name | xargs oc adm certificate approve
+```
+
+### 3. Verify Cluster Health (Operators)
+Check if the "brains" of the cluster are healthy (Console, API, Ingress):
+```bash
+oc get clusteroperators
+```
+
+### 4. Debug Pod/VM Scheduling Issues
+If a Pod or VM is stuck in `Pending`, check the internal events for the reason:
+```bash
+# For Pods
+oc describe pod <pod_name> -n <namespace> | tail -n 20
+# For Virtual Machines
+oc describe vmi <vm_name> -n <namespace> | tail -n 20
+```
+
+### 5. Check Load Balancer Status
+Verify if HAProxy is correctly seeing the backend nodes:
+```bash
+ansible lpt-1 -i inventory.yml -m shell -a "systemctl status haproxy -l" --become
+```
+
+## ⏳ Post-Deployment Stabilization
+
+After the "Wait & Handoff" playbook completes, the cluster often enters a **Revision Rollout** phase. During this time, `oc get clusteroperators` may report `Degraded` or `False`. This is normal.
+
+### How to confirm health:
+Watch the API server pods to see them cycle through revisions (e.g., Revision 8 to Revision 9):
+```bash
+oc get pods -n openshift-kube-apiserver
+```
+*   **Wait** until all `installer-X` pods are **`Completed`**.
+*   **Wait** until all `kube-apiserver-okd-master-XX` pods are **`Running` (5/5)**.
+*   **Wait** until all `guard` pods are **`Running` (1/1)**.
+
+Once the API rollout finishes, the remaining operators (Monitoring, Authentication, Console) will automatically turn **Green**.
+
 ## 🏗️ OKD Virtualization & Storage (Post-Install)
 
 After deploying the KubeVirt HyperConverged Operator, follow these steps to enable local storage on NUC Workers:

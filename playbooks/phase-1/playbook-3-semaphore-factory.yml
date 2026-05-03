@@ -27,6 +27,7 @@
       - { name: "Phase 4: OKD Control Plane (Full Fleet)", playbook: "playbooks/phase-4/playbook-8-okd-masters.yml" }
       - { name: "Phase 4: OKD Bootstrap (Wait & Handoff)", playbook: "playbooks/phase-4/playbook-8b-okd-bootstrap-wait.yml" }
       - { name: "Phase 4: OKD Identity (AD Integration)", playbook: "playbooks/phase-4/playbook-8c-okd-ad-auth.yml" }
+      - { name: "Phase 4: OKD Virtualization (Deploy Operator)", playbook: "playbooks/phase-4/playbook-8d-okd-virt-deploy.yml" }
 
   tasks:
     - name: 🔑 AUTH - Login

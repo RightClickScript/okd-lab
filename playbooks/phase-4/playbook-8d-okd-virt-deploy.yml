@@ -24,9 +24,6 @@
         metadata:
           name: kubevirt-hyperconverged-group
           namespace: {{ namespace }}
-        spec:
-          targetNamespaces:
-          - {{ namespace }}
         EOF
       changed_when: true
 

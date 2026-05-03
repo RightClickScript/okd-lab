@@ -144,6 +144,100 @@
       when: nmstate_installed.rc != 0
       changed_when: true
 
-    - name: 🔓 STATUS - Virtualization Prep Complete
+    - name: ⏳ WAIT - Verify NMState Operator is Ready
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        # We want to make sure at least one handler is running
+        oc get pods -n kubernetes-nmstate | grep nmstate-handler | grep -i Running
+      register: nmstate_ready
+      until: nmstate_ready.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: 🌐 NETWORKING - Create Worker Bridges (Idempotent & Static IPs)
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        cat <<EOF | oc apply -f -
+        apiVersion: nmstate.io/v1
+        kind: NodeNetworkConfigurationPolicy
+        metadata:
+          name: br-ext-{{ item.name }}
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: {{ item.name }}.homelab.local
+          desiredState:
+            interfaces:
+              - name: br-ext
+                type: linux-bridge
+                state: up
+                ipv4:
+                  enabled: true
+                  dhcp: false
+                  address:
+                    - ip: {{ item.ip }}
+                      prefix-length: 24
+                bridge:
+                  options:
+                    stp:
+                      enabled: false
+                  port:
+                    - name: enp1s0
+            routes:
+              config:
+                - destination: 0.0.0.0/0
+                  next-hop-address: {{ network.mgmt_gateway }}
+                  next-hop-interface: br-ext
+            dns-resolver:
+              config:
+                server:
+                  - {{ network.primary_dns }}
+                  - {{ network.secondary_dns }}
+        EOF
+      loop: "{{ okd_vms.workers }}"
+      register: nncp_apply
+      changed_when: "'created' in nncp_apply.stdout or 'configured' in nncp_apply.stdout"
+
+    - name: 🔌 NETWORKING - Create NetworkAttachmentDefinition (NAD)
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        cat <<EOF | oc apply -f -
+        apiVersion: "k8s.cni.cncf.io/v1"
+        kind: NetworkAttachmentDefinition
+        metadata:
+          name: bridge-conf
+          namespace: default
+        spec:
+          config: '{
+              "cniVersion": "0.3.1",
+              "name": "bridge-conf",
+              "type": "bridge",
+              "bridge": "br-ext",
+              "ipam": {}
+            }'
+        EOF
+      register: nad_apply
+      changed_when: "'created' in nad_apply.stdout or 'configured' in nad_apply.stdout"
+
+    - name: 🚀 VIRTUALIZATION - Deploy HyperConverged Control Plane
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        cat <<EOF | oc apply -f -
+        apiVersion: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        metadata:
+          name: kubevirt-hyperconverged
+          namespace: {{ virt_namespace }}
+        spec:
+          enableCommonBootImageImport: true
+          workloadUpdateStrategy:
+            workloadUpdateMethods:
+              - LiveMigrate
+          uninstallStrategy: BlockUninstallIfWorkloadsExist
+        EOF
+      register: hco_apply
+      changed_when: "'created' in hco_apply.stdout or 'configured' in hco_apply.stdout"
+
+    - name: 🔓 STATUS - Virtualization Fully Automated
       ansible.builtin.debug:
-        msg: "Phase 4.4 Finished: KubeVirt installed, Storage created, and NMState deployed. Ready for Day-2 network bridging."
+        msg: "Phase 4.4 Finished: KubeVirt, Storage, and Virtual Networking are fully deployed and configured."

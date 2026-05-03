@@ -39,8 +39,6 @@
         metadata:
           name: community-kubevirt-hyperconverged
           namespace: {{ namespace }}
-          labels:
-            operators.coreos.com/community-kubevirt-hyperconverged.kubevirt-hyperconverged: ""
         spec:
           channel: stable
           installPlanApproval: Automatic

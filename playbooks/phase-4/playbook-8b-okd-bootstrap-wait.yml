@@ -132,6 +132,27 @@
       become: true
       register: final_nodes
 
+    - name: ⏳ WAIT - Post-Deployment API Server Rollout Stabilization
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ install_dir }}/auth/kubeconfig
+        # Check if the kube-apiserver cluster operator has finished progressing and is available
+        PROGRESSING=$(oc get clusteroperator kube-apiserver -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}')
+        AVAILABLE=$(oc get clusteroperator kube-apiserver -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')
+        
+        if [ "$PROGRESSING" == "False" ] && [ "$AVAILABLE" == "True" ]; then
+          echo "Stabilized"
+          exit 0
+        else
+          echo "Rolling out (Progressing: $PROGRESSING, Available: $AVAILABLE)"
+          exit 1
+        fi
+      become: true
+      register: api_rollout
+      until: api_rollout.rc == 0
+      retries: 60
+      delay: 30
+      changed_when: false
+
     - name: 🔓 STATUS - 6-Node Fleet is Fully Operational
       ansible.builtin.debug:
-        msg: "Handoff complete. All 6 nodes are Ready. Bootstrap node decommissioned."
+        msg: "Handoff complete. All 6 nodes are Ready. API Server stabilized. Bootstrap node decommissioned."

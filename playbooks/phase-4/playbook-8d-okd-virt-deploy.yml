@@ -1,61 +1,149 @@
 ---
-- name: Phase 4.4 - Deploy OpenShift Virtualization Operator
-  hosts: lpt-1
+- name: Phase 4.4 - Deploy OpenShift Virtualization & Storage
+  hosts: local_spark
   become: true
   gather_facts: false
 
   vars:
     kubeconfig: "/opt/okd-cluster/auth/kubeconfig"
-    namespace: "kubevirt-hyperconverged"
+    virt_namespace: "kubevirt-hyperconverged"
+    nmstate_version: "v0.86.0"
 
   tasks:
-    - name: 📁 NAMESPACE - Create KubeVirt Namespace
+    # -------------------------------------------------------------------------
+    # 1. KUBE-VIRT OPERATOR
+    # -------------------------------------------------------------------------
+    - name: 🔍 CHECK - Is KubeVirt Operator Installed?
       ansible.builtin.shell: |
         export KUBECONFIG={{ kubeconfig }}
-        oc create namespace {{ namespace }} || true
-      changed_when: true
-
-    - name: 👥 GROUP - Create OperatorGroup
-      ansible.builtin.shell: |
-        export KUBECONFIG={{ kubeconfig }}
-        cat <<EOF | oc apply -f -
-        apiVersion: operators.coreos.com/v1
-        kind: OperatorGroup
-        metadata:
-          name: kubevirt-hyperconverged-group
-          namespace: {{ namespace }}
-        EOF
-      changed_when: true
-
-    - name: 📑 SUB - Create KubeVirt Subscription
-      ansible.builtin.shell: |
-        export KUBECONFIG={{ kubeconfig }}
-        cat <<EOF | oc apply -f -
-        apiVersion: operators.coreos.com/v1alpha1
-        kind: Subscription
-        metadata:
-          name: community-kubevirt-hyperconverged
-          namespace: {{ namespace }}
-        spec:
-          channel: stable
-          installPlanApproval: Automatic
-          name: community-kubevirt-hyperconverged
-          source: community-operators
-          sourceNamespace: openshift-marketplace
-          startingCSV: kubevirt-hyperconverged-operator.v1.15.2
-        EOF
-      changed_when: true
-
-    - name: ⏳ WAIT - Verify Operator Installation (Succeeded)
-      ansible.builtin.shell: |
-        export KUBECONFIG={{ kubeconfig }}
-        oc get csv -n {{ namespace }} | grep -i "kubevirt-hyperconverged" | grep -i "Succeeded"
-      register: csv_check
-      until: csv_check.rc == 0
-      retries: 30
-      delay: 20
+        oc get csv -n {{ virt_namespace }} | grep -i "kubevirt-hyperconverged" | grep -i "Succeeded"
+      register: kubevirt_installed
+      ignore_errors: true
       changed_when: false
 
-    - name: 🔓 STATUS - Virtualization Operator is Ready
+    - name: 📦 DEPLOY - KubeVirt Operator & Subscription
+      when: kubevirt_installed.rc != 0
+      block:
+        - name: Apply Namespace, OperatorGroup, and Subscription
+          ansible.builtin.shell: |
+            export KUBECONFIG={{ kubeconfig }}
+            cat <<EOF | oc apply -f -
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: {{ virt_namespace }}
+            ---
+            apiVersion: operators.coreos.com/v1
+            kind: OperatorGroup
+            metadata:
+              name: kubevirt-hyperconverged-group
+              namespace: {{ virt_namespace }}
+            ---
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: Subscription
+            metadata:
+              name: community-kubevirt-hyperconverged
+              namespace: {{ virt_namespace }}
+            spec:
+              channel: stable
+              installPlanApproval: Automatic
+              name: community-kubevirt-hyperconverged
+              source: community-operators
+              sourceNamespace: openshift-marketplace
+              startingCSV: kubevirt-hyperconverged-operator.v1.15.2
+            EOF
+          changed_when: true
+
+        - name: ⏳ WAIT - Verify Operator Installation (Succeeded)
+          ansible.builtin.shell: |
+            export KUBECONFIG={{ kubeconfig }}
+            oc get csv -n {{ virt_namespace }} | grep -i "kubevirt-hyperconverged" | grep -i "Succeeded"
+          register: csv_check
+          until: csv_check.rc == 0
+          retries: 30
+          delay: 20
+          changed_when: false
+
+    # -------------------------------------------------------------------------
+    # 2. STORAGE (SELINUX & HOSTPATH PROVISIONER)
+    # -------------------------------------------------------------------------
+    - name: 🔍 DISCOVER - Get OKD Worker Nodes
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}'
+      register: worker_nodes
+      changed_when: false
+
+    - name: 🛡️ STORAGE - Prepare Worker Node Storage (SELinux)
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        # Idempotent check: only run chcon if container_file_t is missing
+        oc debug node/{{ item }} -- chroot /host /bin/bash -c "mkdir -p /var/hpvolumes && if ! ls -dZ /var/hpvolumes 2>/dev/null | grep -q container_file_t; then chcon -R -t container_file_t /var/hpvolumes; echo 'changed'; fi"
+      loop: "{{ worker_nodes.stdout.split() }}"
+      register: selinux_fix
+      changed_when: "'changed' in selinux_fix.stdout"
+
+    - name: 💾 STORAGE - Deploy HostPath Provisioner & StorageClass
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        cat <<EOF | oc apply -f -
+        apiVersion: hostpathprovisioner.kubevirt.io/v1beta1
+        kind: HostPathProvisioner
+        metadata:
+          name: hostpath-provisioner
+        spec:
+          imagePullPolicy: IfNotPresent
+          pathConfig:
+            path: "/var/hpvolumes"
+            useNamingPrefix: false
+          workload:
+            nodeSelector:
+              node-role.kubernetes.io/worker: ""
+        ---
+        apiVersion: storage.k8s.io/v1
+        kind: StorageClass
+        metadata:
+          name: hostpath-virt
+          annotations:
+            storageclass.kubernetes.io/is-default-class: "true"
+        provisioner: kubevirt.io.hostpath-provisioner
+        reclaimPolicy: Delete
+        volumeBindingMode: WaitForFirstConsumer
+        EOF
+      register: storage_apply
+      changed_when: "'created' in storage_apply.stdout or 'configured' in storage_apply.stdout"
+
+    # -------------------------------------------------------------------------
+    # 3. NETWORKING (NMSTATE OPERATOR)
+    # -------------------------------------------------------------------------
+    - name: 🔍 CHECK - Is NMState Operator Installed?
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        oc get nmstate nmstate
+      register: nmstate_installed
+      ignore_errors: true
+      changed_when: false
+
+    - name: 🌐 NETWORKING - Install NMState Operator
+      ansible.builtin.shell: |
+        export KUBECONFIG={{ kubeconfig }}
+        BASE_URL="https://github.com/nmstate/kubernetes-nmstate/releases/download/{{ nmstate_version }}"
+        oc apply -f $BASE_URL/nmstate.io_nmstates.yaml
+        oc apply -f $BASE_URL/namespace.yaml
+        oc apply -f $BASE_URL/service_account.yaml
+        oc apply -f $BASE_URL/role.yaml
+        oc apply -f $BASE_URL/role_binding.yaml
+        oc apply -f $BASE_URL/operator.yaml
+        
+        cat <<EOF | oc apply -f -
+        apiVersion: nmstate.io/v1
+        kind: NMState
+        metadata:
+          name: nmstate
+        EOF
+      when: nmstate_installed.rc != 0
+      changed_when: true
+
+    - name: 🔓 STATUS - Virtualization Prep Complete
       ansible.builtin.debug:
-        msg: "OpenShift Virtualization Operator v1.15.2 is installed. You can now deploy the HyperConverged resource."
+        msg: "Phase 4.4 Finished: KubeVirt installed, Storage created, and NMState deployed. Ready for Day-2 network bridging."

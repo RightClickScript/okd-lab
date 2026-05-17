@@ -1,23 +1,59 @@
 ---
-- name: Phase 1-4 - Deploy HashiCorp Vault (via Ingress)
+- name: Phase 1-4 - Deploy HashiCorp Vault (LoadBalancer Mode)
   hosts: lpt-1
   become: true
   gather_facts: false
 
+  vars:
+    # Autonomous Defaults (Overrides welcome via --extra-vars)
+    vault_namespace: "vault"
+    vault_version: "0.28.1"
+    vault_hostname: "vault.homelab.local"
+    vault_lb_ip: "192.168.199.51"
+    vault_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+    vault_nuke: false  # Set to true to wipe existing data
+
   tasks:
+    # -------------------------------------------------------------------------
+    # 1. NUCLEAR CLEANUP (Optional)
+    # -------------------------------------------------------------------------
+    - name: ☢️ NUKE - Uninstall Vault and Wipe Data
+      when: vault_nuke | bool
+      block:
+        - name: Uninstall Helm Release
+          kubernetes.core.helm:
+            name: vault
+            release_namespace: "{{ vault_namespace }}"
+            state: absent
+            kubeconfig: "{{ vault_kubeconfig }}"
+          ignore_errors: true
+
+        - name: Delete PVCs (Wipe Storage)
+          kubernetes.core.k8s:
+            api_version: v1
+            kind: PersistentVolumeClaim
+            namespace: "{{ vault_namespace }}"
+            label_selectors: ["app.kubernetes.io/instance=vault"]
+            state: absent
+            kubeconfig: "{{ vault_kubeconfig }}"
+          ignore_errors: true
+
+    # -------------------------------------------------------------------------
+    # 2. DEPLOYMENT
+    # -------------------------------------------------------------------------
     - name: 📦 HELM - Add HashiCorp Repo
       kubernetes.core.helm_repository:
         name: hashicorp
         repo_url: "https://helm.releases.hashicorp.com"
 
-    - name: 🚀 DEPLOY - Install Vault via Helm
+    - name: 🚀 DEPLOY - Install Vault via Helm (LoadBalancer)
       kubernetes.core.helm:
         name: vault
         chart_ref: hashicorp/vault
-        release_namespace: "{{ vault.namespace }}"
+        release_namespace: "{{ vault_namespace }}"
         create_namespace: true
-        chart_version: "{{ vault.version }}"
-        kubeconfig: "{{ vault.kubeconfig }}"
+        chart_version: "{{ vault_version }}"
+        kubeconfig: "{{ vault_kubeconfig }}"
         values:
           server:
             dataStorage:
@@ -25,39 +61,63 @@
               size: 10Gi
             standalone:
               enabled: true
+            service:
+              type: LoadBalancer
+              loadBalancerIP: "{{ vault_lb_ip }}"
+              port: 8200
             ui:
               enabled: true
-              serviceType: ClusterIP
+              serviceType: ClusterIP # UI is accessible via the main LoadBalancer service port 8200 or 80 if configured
         wait: true
 
-    - name: 🌐 INGRESS - Create Vault Ingress Rule
+    - name: 🌐 SERVICE - Ensure Port 80 for UI (Alias to 8200)
       kubernetes.core.k8s:
-        kubeconfig: "{{ vault.kubeconfig }}"
+        kubeconfig: "{{ vault_kubeconfig }}"
         state: present
         definition:
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
+          apiVersion: v1
+          kind: Service
           metadata:
-            name: vault-ingress
-            namespace: "{{ vault.namespace }}"
+            name: vault-ui-lb
+            namespace: "{{ vault_namespace }}"
             annotations:
-              traefik.ingress.kubernetes.io/router.entrypoints: web
+              metallb.universe.tf/allow-shared-ip: "vault-shared"
           spec:
-            rules:
-              - host: "{{ vault.hostname }}"
-                http:
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      backend:
-                        service:
-                          name: vault # FIXED: Corrected from vault-ui to vault
-                          port:
-                            number: 8200
+            type: LoadBalancer
+            loadBalancerIP: "{{ vault_lb_ip }}"
+            selector:
+              app.kubernetes.io/instance: vault
+              app.kubernetes.io/name: vault
+              component: server
+            ports:
+              - name: http
+                protocol: TCP
+                port: 80
+                targetPort: 8200
+
+    # -------------------------------------------------------------------------
+    # 3. DNS INTEGRATION
+    # -------------------------------------------------------------------------
+    - name: 📂 DNS - Update Windows AD Record
+      ansible.windows.win_dns_record:
+        name: "vault"
+        zone: "homelab.local"
+        type: "A"
+        value: "{{ vault_lb_ip }}"
+        state: present
+      delegate_to: identity-01
+      vars:
+        ansible_user: "administrator"
+        ansible_password: "Admin@12345"
+        ansible_connection: "winrm"
+        ansible_winrm_transport: "basic"
+        ansible_winrm_server_cert_validation: "ignore"
+        ansible_port: 5985
 
     - name: 🎉 FINISH - Success Message
       ansible.builtin.debug:
         msg: 
-          - "Vault is deployed at http://{{ vault.hostname }}"
+          - "Vault is deployed at http://{{ vault_hostname }} (IP: {{ vault_lb_ip }})"
+          - "API Port: 8200 | UI Port: 80"
           - "Status: SEALED (Manual Init Required)"
-          - "To init, run on lpt-1: kubectl exec -n {{ vault.namespace }} -it vault-0 -- vault operator init"
+          - "To init, run on lpt-1: kubectl exec -n {{ vault_namespace }} -it vault-0 -- vault operator init"

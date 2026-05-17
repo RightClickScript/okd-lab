@@ -28,88 +28,49 @@
         oc debug node/okd-master-01.homelab.local -- chroot /host /usr/local/bin/cluster-backup.sh /home/core/assets/backup
       ignore_errors: true
 
-    - name: 🚧 CORDON - Mark all nodes as unschedulable
-      ansible.builtin.shell: |
-        export KUBECONFIG={{ kubeconfig }}
-        for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do
-          oc adm cordon ${node}
-        done
-      changed_when: true
-
-    - name: 🧹 DRAIN - Evacuate pods from Worker nodes
-      ansible.builtin.shell: |
-        export KUBECONFIG={{ kubeconfig }}
-        for node in $(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}'); do
-          oc adm drain ${node} --delete-emptydir-data --ignore-daemonsets=true --timeout=180s --force
-        done
-      changed_when: true
-      ignore_errors: true
-
-    - name: 💤 SHUTDOWN - Signal VM OS Shutdown (Delayed 1m)
-      ansible.builtin.shell: |
-        export KUBECONFIG={{ kubeconfig }}
-        # Shut down workers first
-        for node in $(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}'); do
-          oc debug node/${node} -- chroot /host shutdown -h 1 &
-        done
-        sleep 10
-        # Shut down masters last
-        for node in $(oc get nodes -l node-role.kubernetes.io/master -o jsonpath='{.items[*].metadata.name}'); do
-          oc debug node/${node} -- chroot /host shutdown -h 1 &
-        done
-      changed_when: true
-
-- name: Phase 0.5b - Hypervisor Verification & Core VM Shutdown
+- name: Phase 0.5b - Hypervisor-Led VM Shutdown
   hosts: hypervisors
   become: true
   gather_facts: false
   tasks:
-    - name: ⏳ WAIT - Allow 5 minutes for graceful OKD VM stop
-      ansible.builtin.wait_for:
-        timeout: 300
-      delegate_to: localhost
-      become: false
-      run_once: true
-
-    - name: 🗡️ FORCE - Kill any lingering OKD VMs
+    - name: 💤 OKD VMS - Signal ACPI Shutdown to all OKD VMs
       ansible.builtin.shell: |
         for vm in $(virsh list --name | grep 'okd-'); do
-          if [ -n "$vm" ]; then
-            echo "Graceful stop failed. Force-killing $vm..."
-            virsh destroy "$vm" || true
-          fi
+          echo "Signaling ACPI shutdown to $vm..."
+          virsh shutdown "$vm" || true
         done
       changed_when: true
 
-    - name: 💤 CORE VMS - Gracefully shutdown AD and Morpheus
+    - name: 💤 CORE VMS - Signal ACPI Shutdown to AD and Morpheus
       ansible.builtin.shell: |
         virsh shutdown identity-01 || true
         virsh shutdown morpheus-01 || true
       when: inventory_hostname == 'sms-1'
       changed_when: true
 
-    - name: ⏳ WAIT - Wait up to 5 minutes for Core VMs to shut down
+    - name: ⏳ WAIT - Wait for all VMs to power off (Graceful period)
       ansible.builtin.shell: |
         for i in {1..30}; do
-          running=$(virsh list --name | grep -E '^identity-01$|^morpheus-01$' | wc -l)
+          running=$(virsh list --name | grep -E '^okd-|^identity-01$|^morpheus-01$' | wc -l)
           if [ "$running" -eq 0 ]; then
+            echo "All VMs powered off."
             exit 0
           fi
+          echo "Waiting for $running VMs to stop..."
           sleep 10
         done
         exit 1
-      when: inventory_hostname == 'sms-1'
-      register: core_vm_wait
+      register: vm_wait
       ignore_errors: true
       changed_when: false
 
-    - name: 🗡️ FORCE - Kill lingering Core VMs (If graceful failed)
+    - name: 🗡️ FORCE - Kill any lingering VMs (If graceful failed)
       ansible.builtin.shell: |
-        virsh destroy identity-01 || true
-        virsh destroy morpheus-01 || true
-      when: 
-        - inventory_hostname == 'sms-1'
-        - core_vm_wait.rc != 0
+        for vm in $(virsh list --name | grep -E 'okd-|identity-01|morpheus-01'); do
+          echo "Graceful shutdown failed. Force-killing $vm..."
+          virsh destroy "$vm" || true
+        done
+      when: vm_wait.rc != 0
       changed_when: true
 
 - name: Phase 0.5c - Physical Host Shutdown

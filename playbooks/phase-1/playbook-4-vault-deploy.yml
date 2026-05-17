@@ -106,6 +106,7 @@
         value: "{{ vault_lb_ip }}"
         state: present
       delegate_to: identity-01
+      become: false
       vars:
         ansible_user: "administrator"
         ansible_password: "Admin@12345"

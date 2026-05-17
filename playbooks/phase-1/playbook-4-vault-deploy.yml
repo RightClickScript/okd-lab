@@ -65,6 +65,8 @@
               type: LoadBalancer
               loadBalancerIP: "{{ vault_lb_ip }}"
               port: 8200
+              annotations:
+                metallb.universe.tf/allow-shared-ip: "vault-shared"
             ui:
               enabled: true
               serviceType: ClusterIP # UI is accessible via the main LoadBalancer service port 8200 or 80 if configured
